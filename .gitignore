@@ -1,0 +1,26 @@
+# OS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Rust (future)
+target/
+
+# Node (future)
+node_modules/
+dist/
+
+# Models and audio samples are never committed
+*.gguf
+*.ggml
+*.bin
+*.onnx
+*.wav
+*.mp3
+*.m4a
+
+# Spike scratch output
+spikes/**/out/
