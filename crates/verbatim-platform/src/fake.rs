@@ -329,8 +329,12 @@ mod tests {
 
         // First injection attempt fails; the driver retries and writes the
         // transient clipboard a second time. Only the latest write is "ours".
-        guard.set_transient_text("dictated text (attempt 1)").unwrap();
-        guard.set_transient_text("dictated text (attempt 2)").unwrap();
+        guard
+            .set_transient_text("dictated text (attempt 1)")
+            .unwrap();
+        guard
+            .set_transient_text("dictated text (attempt 2)")
+            .unwrap();
 
         assert_eq!(
             guard.restore_if_unchanged(snap).unwrap(),
