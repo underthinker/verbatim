@@ -3,9 +3,10 @@
 A cross-platform, privacy-first, fully local dictation application.
 Press a hotkey, speak, and get polished text in any app - with zero cloud dependency.
 
-**Status: design phase.**
-No production code exists yet.
-The project is currently specified in the documents below; implementation follows the roadmap.
+**Status: early implementation (milestone M1).**
+The walking-skeleton workspace is scaffolded: a Cargo workspace with the session state machine, the platform/engine layer traits, and deterministic fakes standing in for real hardware.
+Real capture, transcription, injection, and the Tauri shell land during M1 wire-up; see [docs/ROADMAP.md](docs/ROADMAP.md) for milestone status.
+The design documents below remain the source of truth.
 
 ## Design documents
 
@@ -16,6 +17,24 @@ The project is currently specified in the documents below; implementation follow
 | [docs/UX.md](docs/UX.md) | UX specification: state machine, error handling, onboarding, accessibility |
 | [docs/ENGINEERING.md](docs/ENGINEERING.md) | Engineering specification: repo layout, testing, CI/CD, packaging, releases |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation roadmap: milestones, acceptance criteria |
+
+## Workspace
+
+Cargo workspace (Rust stable, edition 2024, MSRV 1.85 pinned via `rust-toolchain.toml`):
+
+| Crate | Layer | Contents |
+|---|---|---|
+| `verbatim-core` | Core | session state machine, event bus, error taxonomy |
+| `verbatim-platform` | Platform | hotkey/audio/injection/clipboard/permission/focus/autostart traits, deterministic fakes, per-OS stubs |
+| `verbatim-engines` | Engine | transcription + polish traits, engine registry, fakes |
+| `verbatim-app` | App | the `verbatim` binary (`trigger`/`status` CLI; Tauri shell joins later in M1) |
+
+```
+cargo build --locked      # build all crates
+cargo test  --locked      # unit + walking-skeleton integration tests
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the layer model and [docs/ENGINEERING.md](docs/ENGINEERING.md) for the full repo layout.
 
 ## Risk spikes
 

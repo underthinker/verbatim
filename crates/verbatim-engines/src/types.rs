@@ -146,3 +146,28 @@ pub enum EngineError {
     #[error("inference failed: {0}")]
     Inference(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duration_matches_sample_count_at_pipeline_rate() {
+        let buf = AudioBuffer {
+            samples: vec![0.0; PIPELINE_SAMPLE_RATE_HZ as usize],
+            sample_rate_hz: PIPELINE_SAMPLE_RATE_HZ,
+        };
+        assert_eq!(buf.duration(), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn duration_zero_sample_rate_is_zero_not_panic() {
+        // Guard added in the M1 review: an unguarded division would yield
+        // inf and panic in `Duration::from_secs_f64`.
+        let buf = AudioBuffer {
+            samples: vec![0.0; 8000],
+            sample_rate_hz: 0,
+        };
+        assert_eq!(buf.duration(), Duration::ZERO);
+    }
+}

@@ -297,3 +297,65 @@ impl Autostart for FakeAutostart {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Review fix: restore must key on the changeCount of our *own* last
+    // transient write, so a retry that writes the clipboard twice does not
+    // fool the guard into thinking the user intervened.
+
+    #[test]
+    fn restore_after_clean_transient_write_restores_original() {
+        let guard = FakeClipboardGuard::default();
+        guard.user_write("original").unwrap();
+        let snap = guard.snapshot().unwrap();
+
+        guard.set_transient_text("dictated text").unwrap();
+
+        assert_eq!(
+            guard.restore_if_unchanged(snap).unwrap(),
+            RestoreOutcome::Restored
+        );
+        assert_eq!(guard.snapshot().unwrap().text.as_deref(), Some("original"));
+    }
+
+    #[test]
+    fn restore_survives_a_retried_transient_write() {
+        let guard = FakeClipboardGuard::default();
+        guard.user_write("original").unwrap();
+        let snap = guard.snapshot().unwrap();
+
+        // First injection attempt fails; the driver retries and writes the
+        // transient clipboard a second time. Only the latest write is "ours".
+        guard.set_transient_text("dictated text (attempt 1)").unwrap();
+        guard.set_transient_text("dictated text (attempt 2)").unwrap();
+
+        assert_eq!(
+            guard.restore_if_unchanged(snap).unwrap(),
+            RestoreOutcome::Restored
+        );
+        assert_eq!(guard.snapshot().unwrap().text.as_deref(), Some("original"));
+    }
+
+    #[test]
+    fn restore_yields_to_a_user_write_between_transient_and_restore() {
+        let guard = FakeClipboardGuard::default();
+        guard.user_write("original").unwrap();
+        let snap = guard.snapshot().unwrap();
+
+        guard.set_transient_text("dictated text").unwrap();
+        // User copies something of their own before we restore.
+        guard.user_write("user's own copy").unwrap();
+
+        assert_eq!(
+            guard.restore_if_unchanged(snap).unwrap(),
+            RestoreOutcome::UserModified
+        );
+        assert_eq!(
+            guard.snapshot().unwrap().text.as_deref(),
+            Some("user's own copy")
+        );
+    }
+}
