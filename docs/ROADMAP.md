@@ -17,7 +17,7 @@ Remaining acceptance criteria:
 
 ## M1 - Walking skeleton (ugly but real, all platforms)
 
-Scope: hotkey -> record -> whisper.cpp -> inject raw text, tray icon with quit, `verbatim trigger` CLI, fake-capture test seam, CI matrix from the first commit.
+Scope: hotkey -> record -> whisper.cpp -> inject raw text, tray icon with quit, `verbatim daemon`/`trigger`/`status` CLI, SessionRunner actor with fake-pipeline orchestration, trigger IPC protocol (closed verb set on a Unix domain socket), fake-capture test seam, CI matrix from the first commit.
 
 Acceptance criteria:
 

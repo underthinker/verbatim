@@ -1,8 +1,8 @@
 //! Fake platform implementations: the deterministic test seam for core and
 //! app tests (ENGINEERING.md section 4, E2E smoke).
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use verbatim_engines::AudioBuffer;
 
@@ -155,6 +155,23 @@ impl TextInjector for FakeTextInjector {
             backend: InjectionBackend::ClipboardAssistedPaste,
             verified: true,
         })
+    }
+}
+
+/// Share one `FakeTextInjector` between a runner (which takes ownership as a
+/// `Box<dyn TextInjector>`) and a test that still wants to read what landed.
+impl TextInjector for Arc<FakeTextInjector> {
+    fn probe(&self) -> Vec<InjectionBackend> {
+        (**self).probe()
+    }
+
+    fn inject(
+        &self,
+        text: &str,
+        target: &FocusedApp,
+        strategy: InjectionStrategy,
+    ) -> Result<InjectionReceipt, InjectError> {
+        (**self).inject(text, target, strategy)
     }
 }
 

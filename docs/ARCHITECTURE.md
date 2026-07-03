@@ -34,10 +34,10 @@ Cargo workspace (details of the full repo tree in ENGINEERING.md):
 
 | Crate | Layer | Contents |
 |---|---|---|
-| `verbatim-core` | Core | session state machine, audio pipeline, VAD, polish pipeline, model manager, config, history, event bus; depends on trait definitions only |
+| `verbatim-core` | Core | session state machine, session runner actor, audio pipeline, VAD, polish pipeline, model manager, config, history, event bus; depends on trait definitions only |
 | `verbatim-platform` | Platform | trait definitions (`HotkeyManager`, `AudioCapture`, `TextInjector`, `ClipboardGuard`, `PermissionProbe`, `FocusTracker`, `Autostart`) and the per-OS implementations (`macos/`, `windows/`, `linux/` modules) |
 | `verbatim-engines` | Engine | `TranscriptionEngine` + `PolishEngine` traits, `whisper-cpp`, `sherpa-onnx`, `llama-cpp` implementations behind feature flags, engine registry |
-| `verbatim-app` | UI | Tauri shell: command handlers, event bridge, tray, overlay window management, CLI entry (`verbatim trigger`) |
+| `verbatim-app` | UI | Tauri shell: command handlers, event bridge, tray, overlay window management, CLI entry (`verbatim daemon`/`trigger`/`status`) |
 
 ## 3. The session state machine
 
@@ -154,7 +154,7 @@ Total: raw ≈ 0.4-1.0 s; polished ≈ 0.7-1.5 s   (PRD budgets: 800 ms raw / 1.
 - **Threading**: one dedicated real-time audio thread (no allocation on the callback), a tokio runtime for pipeline/IO, engines on a blocking pool. The state machine lives on a single actor task; all mutation flows through its mailbox.
 - **No plugins in v1** (PRD non-goal enforcement): extension points are the four traits; the plugin system is a post-v1 design on top of them.
 - **No auto-updater subsystem in v1**: updates ride distribution channels (Homebrew, winget, Flathub, GitHub releases); Tauri's updater may be revisited post-v1.
-- **Headless parity**: `verbatim trigger`/`verbatim status` CLI exists from M1 (required for GNOME, useful for testing and scripting).
+- **Headless parity**: `verbatim daemon`/`trigger`/`status` CLI exists from M1 (the daemon owns the runner and the trigger socket; clients connect per-request. Required for GNOME, useful for testing and scripting).
 
 ## 7. Spike-to-architecture traceability
 

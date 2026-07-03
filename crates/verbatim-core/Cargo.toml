@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 verbatim-engines.workspace = true
 verbatim-platform.workspace = true
 

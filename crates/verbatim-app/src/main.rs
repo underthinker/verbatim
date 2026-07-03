@@ -1,15 +1,25 @@
 //! The `verbatim` binary: CLI entry with headless parity from M1
-//! (ARCHITECTURE.md 6). The Tauri shell joins during M1 wire-up.
+//! (ARCHITECTURE.md 6). The Tauri shell joins in a later M1 phase.
 //!
 //! Security (ENGINEERING.md 8): the trigger IPC accepts trigger verbs only,
 //! never text payloads; other processes must never be able to inject text
-//! through us.
+//! through us. The wire protocol enforces this - see `ipc.rs`.
+//!
+//! The socket transport is Unix-only for this slice; the Windows backend and
+//! its IPC land later in M1.
 
 #![forbid(unsafe_code)]
 
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
+
+#[cfg(unix)]
+mod client;
+#[cfg(unix)]
+mod daemon;
+#[cfg(unix)]
+mod ipc;
 
 #[derive(Parser)]
 #[command(
@@ -19,11 +29,14 @@ use clap::{Parser, Subcommand, ValueEnum};
 )]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
 enum Command {
+    /// Run the background instance: owns the session runner and the trigger
+    /// socket. This is the default when no subcommand is given.
+    Daemon,
     /// Control a running Verbatim instance (how native shortcut bindings
     /// drive dictation on GNOME, and how scripts integrate).
     Trigger {
@@ -41,18 +54,70 @@ enum TriggerVerb {
     Toggle,
 }
 
-fn main() -> ExitCode {
+#[tokio::main]
+async fn main() -> ExitCode {
     let cli = Cli::parse();
-    match cli.command {
-        Command::Trigger { verb } => {
-            eprintln!(
-                "verbatim: cannot deliver `trigger {verb:?}`: no running instance (IPC lands later in M1)"
-            );
-            ExitCode::FAILURE
-        }
-        Command::Status => {
-            eprintln!("verbatim: no running instance (IPC lands later in M1)");
+    match cli.command.unwrap_or(Command::Daemon) {
+        Command::Daemon => run_daemon().await,
+        Command::Trigger { verb } => run_trigger(verb).await,
+        Command::Status => run_status().await,
+    }
+}
+
+#[cfg(unix)]
+async fn run_daemon() -> ExitCode {
+    init_tracing();
+    let events = std::sync::Arc::new(verbatim_core::event::EventBus::default());
+    let path = ipc::socket_path();
+    match daemon::serve(&path, events).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("verbatim: daemon failed: {err}");
             ExitCode::FAILURE
         }
     }
+}
+
+#[cfg(unix)]
+async fn run_trigger(verb: TriggerVerb) -> ExitCode {
+    let verb = match verb {
+        TriggerVerb::Start => ipc::Verb::Start,
+        TriggerVerb::Stop => ipc::Verb::Stop,
+        TriggerVerb::Toggle => ipc::Verb::Toggle,
+    };
+    client::run(&ipc::socket_path(), ipc::Request::Trigger(verb)).await
+}
+
+#[cfg(unix)]
+async fn run_status() -> ExitCode {
+    client::run(&ipc::socket_path(), ipc::Request::Status).await
+}
+
+#[cfg(unix)]
+fn init_tracing() {
+    // Best-effort: a daemon with no log sink is still functional.
+    let _ = tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .try_init();
+}
+
+#[cfg(not(unix))]
+async fn run_daemon() -> ExitCode {
+    unsupported("the daemon")
+}
+
+#[cfg(not(unix))]
+async fn run_trigger(_verb: TriggerVerb) -> ExitCode {
+    unsupported("trigger IPC")
+}
+
+#[cfg(not(unix))]
+async fn run_status() -> ExitCode {
+    unsupported("status IPC")
+}
+
+#[cfg(not(unix))]
+fn unsupported(what: &str) -> ExitCode {
+    eprintln!("verbatim: {what} requires a Unix platform; Windows support lands later in M1");
+    ExitCode::FAILURE
 }
