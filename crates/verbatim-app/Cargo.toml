@@ -12,6 +12,9 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
 verbatim-core.workspace = true
 verbatim-engines.workspace = true
 verbatim-platform.workspace = true
