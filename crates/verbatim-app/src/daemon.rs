@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
+use tokio::signal::unix::{signal, SignalKind};
 
 use verbatim_core::event::EventBus;
 use verbatim_core::runner::{RunnerConfig, RunnerDeps, RunnerHandle, SessionRunner};
@@ -65,16 +66,36 @@ pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
 /// bus and hold the handle before any client connects.
 pub async fn serve_with_handle(path: &Path, handle: RunnerHandle) -> std::io::Result<()> {
     let listener = bind(path)?;
+    let path = path.to_owned();
     tracing::info!(path = %path.display(), "verbatim daemon listening");
+
+    let mut term = signal(SignalKind::terminate())?;
+    let mut int = signal(SignalKind::interrupt())?;
+
     loop {
-        let (stream, _addr) = listener.accept().await?;
-        let handle = handle.clone();
-        tokio::spawn(async move {
-            if let Err(err) = handle_connection(stream, handle).await {
-                tracing::warn!(error = %err, "connection error");
+        tokio::select! {
+            result = listener.accept() => {
+                let (stream, _addr) = result?;
+                let handle = handle.clone();
+                tokio::spawn(async move {
+                    if let Err(err) = handle_connection(stream, handle).await {
+                        tracing::warn!(error = %err, "connection error");
+                    }
+                });
             }
-        });
+            _ = term.recv() => {
+                tracing::info!("received SIGTERM, shutting down");
+                break;
+            }
+            _ = int.recv() => {
+                tracing::info!("received SIGINT, shutting down");
+                break;
+            }
+        }
     }
+
+    let _ = std::fs::remove_file(&path);
+    Ok(())
 }
 
 /// Bind the listening socket owner-only, clearing any stale socket file first.

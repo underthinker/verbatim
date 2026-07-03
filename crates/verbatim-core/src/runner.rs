@@ -140,8 +140,8 @@ impl SessionRunner {
     ) -> (Self, RunnerHandle) {
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
         let runner = Self {
-            session: DictationSession::new(SessionId(0)),
-            next_id: 0,
+            session: DictationSession::new(SessionId(1)),
+            next_id: 1,
             audio: deps.audio,
             transcription: deps.transcription,
             polish: deps.polish,
