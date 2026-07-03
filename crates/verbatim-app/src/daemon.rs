@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 
 use verbatim_core::event::EventBus;
 use verbatim_core::runner::{RunnerConfig, RunnerDeps, RunnerHandle, SessionRunner};
