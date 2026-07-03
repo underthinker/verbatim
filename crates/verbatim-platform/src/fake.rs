@@ -158,24 +158,29 @@ impl TextInjector for FakeTextInjector {
     }
 }
 
-/// An in-memory `ClipboardGuard` with a real change counter.
+/// An in-memory `ClipboardGuard` with a real change counter, mirroring
+/// NSPasteboard `changeCount` semantics: every write (including restore)
+/// bumps the counter.
 #[derive(Default)]
 pub struct FakeClipboardGuard {
     text: Mutex<Option<String>>,
     change_count: AtomicU64,
+    /// `change_count` produced by our own most recent transient write, so
+    /// restore can detect any intervening write regardless of how many
+    /// transient writes the driver made.
+    transient_change_count: AtomicU64,
 }
 
 impl FakeClipboardGuard {
     /// Simulate the user (or another app) writing the clipboard.
     pub fn user_write(&self, text: &str) -> Result<(), ClipboardError> {
-        self.write(text)
+        self.write(text).map(|_| ())
     }
 
-    fn write(&self, text: &str) -> Result<(), ClipboardError> {
+    fn write(&self, text: &str) -> Result<u64, ClipboardError> {
         let mut guard = self.text.lock().map_err(|_| ClipboardError::Unavailable)?;
         *guard = Some(text.to_owned());
-        self.change_count.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        Ok(self.change_count.fetch_add(1, Ordering::SeqCst) + 1)
     }
 }
 
@@ -189,20 +194,26 @@ impl ClipboardGuard for FakeClipboardGuard {
     }
 
     fn set_transient_text(&self, text: &str) -> Result<(), ClipboardError> {
-        self.write(text)
+        let change_count = self.write(text)?;
+        self.transient_change_count
+            .store(change_count, Ordering::SeqCst);
+        Ok(())
     }
 
     fn restore_if_unchanged(
         &self,
         snapshot: ClipboardSnapshot,
     ) -> Result<RestoreOutcome, ClipboardError> {
-        // One change is expected: our own transient write. More means the
-        // user or another app wrote in between, and their content wins.
-        if self.change_count.load(Ordering::SeqCst) > snapshot.change_count + 1 {
+        // Anything written after our own last transient write means the user
+        // or another app wrote in between, and their content wins.
+        let mut guard = self.text.lock().map_err(|_| ClipboardError::Unavailable)?;
+        if self.change_count.load(Ordering::SeqCst)
+            > self.transient_change_count.load(Ordering::SeqCst)
+        {
             return Ok(RestoreOutcome::UserModified);
         }
-        let mut guard = self.text.lock().map_err(|_| ClipboardError::Unavailable)?;
         *guard = snapshot.text;
+        self.change_count.fetch_add(1, Ordering::SeqCst);
         Ok(RestoreOutcome::Restored)
     }
 }

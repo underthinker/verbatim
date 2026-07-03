@@ -15,6 +15,9 @@ pub struct AudioBuffer {
 
 impl AudioBuffer {
     pub fn duration(&self) -> Duration {
+        if self.sample_rate_hz == 0 {
+            return Duration::ZERO;
+        }
         Duration::from_secs_f64(self.samples.len() as f64 / f64::from(self.sample_rate_hz))
     }
 }
