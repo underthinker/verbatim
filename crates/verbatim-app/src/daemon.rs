@@ -57,7 +57,17 @@ fn fake_model() -> ModelHandle {
 /// process is killed. Returns the shared event bus so an in-process host (the
 /// tests, later the Tauri shell) can subscribe.
 pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
-    let (runner, handle) = SessionRunner::new(fake_deps(), RunnerConfig::default(), events);
+    // Phase 2: the real microphone replaces only the capture seam behind the
+    // `real-audio` feature; the rest of the pipeline stays fake for now.
+    #[cfg(feature = "real-audio")]
+    let deps = {
+        let mut deps = fake_deps();
+        deps.audio = Box::new(verbatim_platform::audio::CpalAudioCapture::new());
+        deps
+    };
+    #[cfg(not(feature = "real-audio"))]
+    let deps = fake_deps();
+    let (runner, handle) = SessionRunner::new(deps, RunnerConfig::default(), events);
     tokio::spawn(runner.run());
     serve_with_handle(path, handle).await
 }

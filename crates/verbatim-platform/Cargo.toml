@@ -8,7 +8,19 @@ license.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+tracing.workspace = true
 verbatim-engines.workspace = true
+
+# Real microphone capture (ENGINEERING.md 2: cpal behind the AudioCapture
+# trait). Gated so fake-only builds and headless CI need no audio stack.
+cpal = { version = "0.15", optional = true }
+ringbuf = { version = "0.4", optional = true }
+rubato = { version = "0.15", optional = true }
+
+[features]
+# Compile the real cpal-backed AudioCapture. Off by default: tests and the
+# default daemon run on the deterministic fakes (ENGINEERING.md 4).
+cpal-audio = ["dep:cpal", "dep:ringbuf", "dep:rubato"]
 
 [lints]
 workspace = true
