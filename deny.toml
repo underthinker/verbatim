@@ -1,0 +1,31 @@
+# cargo-deny configuration (ENGINEERING.md sections 3 and 8).
+
+[graph]
+all-features = true
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+]
+
+[bans]
+multiple-versions = "warn"
+# ENGINEERING.md 8: no outbound-capable dependencies outside the model
+# downloader. When the downloader crate lands, it gets a `wrappers` exception.
+deny = [
+    { crate = "reqwest" },
+    { crate = "ureq" },
+    { crate = "curl" },
+    { crate = "isahc" },
+    { crate = "hyper" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

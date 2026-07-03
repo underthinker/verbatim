@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+
+[workspace.dependencies]
+thiserror = "2"
+tokio = { version = "1", default-features = false, features = ["sync"] }
+clap = { version = "4", features = ["derive"] }
+
+verbatim-core = { path = "crates/verbatim-core" }
+verbatim-platform = { path = "crates/verbatim-platform" }
+verbatim-engines = { path = "crates/verbatim-engines" }
+
+[workspace.lints.clippy]
+# ENGINEERING.md section 3: no unwrap/expect outside tests and startup.
+unwrap_used = "deny"
+expect_used = "deny"

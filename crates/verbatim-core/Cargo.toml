@@ -1,0 +1,16 @@
+[package]
+name = "verbatim-core"
+description = "Core layer: session state machine, pipelines, event bus, config, history"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tokio.workspace = true
+verbatim-engines.workspace = true
+verbatim-platform.workspace = true
+
+[lints]
+workspace = true
