@@ -4,8 +4,8 @@ A cross-platform, privacy-first, fully local dictation application.
 Press a hotkey, speak, and get polished text in any app - with zero cloud dependency.
 
 **Status: early implementation (milestone M1).**
-The walking-skeleton workspace is scaffolded: a Cargo workspace with the session state machine, the platform/engine layer traits, and deterministic fakes standing in for real hardware.
-Real capture, transcription, injection, and the Tauri shell land during M1 wire-up; see [docs/ROADMAP.md](docs/ROADMAP.md) for milestone status.
+The walking-skeleton workspace has a working `SessionRunner` actor that drives the dictation pipeline through deterministic fakes, a Unix-only daemon with IPC trigger protocol, and the session state machine + platform/engine layer traits.
+Real capture, transcription, injection, and the Tauri shell land during later M1 phases; see [docs/ROADMAP.md](docs/ROADMAP.md) for milestone status.
 The design documents below remain the source of truth.
 
 ## Design documents
@@ -24,10 +24,10 @@ Cargo workspace (Rust stable, edition 2024, MSRV 1.85 pinned via `rust-toolchain
 
 | Crate | Layer | Contents |
 |---|---|---|
-| `verbatim-core` | Core | session state machine, event bus, error taxonomy |
+| `verbatim-core` | Core | session state machine, event bus, error taxonomy, session runner actor |
 | `verbatim-platform` | Platform | hotkey/audio/injection/clipboard/permission/focus/autostart traits, deterministic fakes, per-OS stubs |
 | `verbatim-engines` | Engine | transcription + polish traits, engine registry, fakes |
-| `verbatim-app` | App | the `verbatim` binary (`trigger`/`status` CLI; Tauri shell joins later in M1) |
+| `verbatim-app` | App | the `verbatim` binary (`daemon`/`trigger`/`status` CLI; Tauri shell joins later in M1) |
 
 ```
 cargo build --locked      # build all crates
