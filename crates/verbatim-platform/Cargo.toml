@@ -17,10 +17,31 @@ cpal = { version = "0.15", optional = true }
 ringbuf = { version = "0.4", optional = true }
 rubato = { version = "0.15", optional = true }
 
+# Real macOS text injection stack (ARCHITECTURE.md 4.4, spikes 1-2). Only ever
+# compiled on macOS under the `mac-inject` feature; fake-only and non-macOS
+# builds pull none of it.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", optional = true }
+objc2-foundation = { version = "0.3", optional = true, default-features = false, features = [
+    "std",
+    "NSString",
+    "NSData",
+] }
+objc2-app-kit = { version = "0.3", optional = true, default-features = false, features = [
+    "std",
+    "NSPasteboard",
+    "NSWorkspace",
+    "NSRunningApplication",
+] }
+core-graphics = { version = "0.24", optional = true }
+
 [features]
 # Compile the real cpal-backed AudioCapture. Off by default: tests and the
 # default daemon run on the deterministic fakes (ENGINEERING.md 4).
 cpal-audio = ["dep:cpal", "dep:ringbuf", "dep:rubato"]
+# Compile the real macOS injection/focus/clipboard/permission seams. Off by
+# default so headless CI and the fake pipeline never touch AppKit/CoreGraphics.
+mac-inject = ["dep:objc2", "dep:objc2-foundation", "dep:objc2-app-kit", "dep:core-graphics"]
 
 [lints]
 workspace = true

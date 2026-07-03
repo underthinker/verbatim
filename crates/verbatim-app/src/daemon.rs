@@ -80,6 +80,13 @@ fn build_deps() -> RunnerDeps {
             deps.transcription = engine;
         }
     }
+    // Phase 4: real macOS text injection + focus tracking. The injector owns
+    // its own clipboard discipline; both stay behind their probed capabilities.
+    #[cfg(all(feature = "real-injection", target_os = "macos"))]
+    {
+        deps.injector = Box::new(verbatim_platform::macos::MacTextInjector::new());
+        deps.focus = Box::new(verbatim_platform::macos::MacFocusTracker::new());
+    }
     deps
 }
 
