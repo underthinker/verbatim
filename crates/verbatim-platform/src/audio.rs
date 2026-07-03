@@ -371,23 +371,31 @@ fn resample_to_pipeline_rate(input: &[f32], in_rate: u32) -> Result<Vec<f32>, St
 
     let expected = (input.len() as f64 * ratio).round() as usize;
     let mut output = Vec::with_capacity(expected + CHUNK);
-    let mut frame = vec![0.0f32; CHUNK];
     let mut offset = 0;
-    while offset < input.len() {
-        let take = (input.len() - offset).min(CHUNK);
-        frame[..take].copy_from_slice(&input[offset..offset + take]);
-        if take < CHUNK {
-            frame[take..].fill(0.0);
-        }
+    while offset + CHUNK <= input.len() {
         let resampled = resampler
-            .process(std::slice::from_ref(&frame), None)
+            .process(&[&input[offset..offset + CHUNK]], None)
             .map_err(|err| format!("resample failed: {err}"))?;
         if let Some(channel) = resampled.into_iter().next() {
             output.extend_from_slice(&channel);
         }
         offset += CHUNK;
     }
-    output.truncate(expected);
+    if offset < input.len() {
+        let resampled = resampler
+            .process_partial(Some(&[&input[offset..]]), None)
+            .map_err(|err| format!("resample partial failed: {err}"))?;
+        if let Some(channel) = resampled.into_iter().next() {
+            output.extend_from_slice(&channel);
+        }
+    }
+    let flushed = resampler
+        .process_partial(None::<&[Vec<f32>]>, None)
+        .map_err(|err| format!("resample flush failed: {err}"))?;
+    if let Some(channel) = flushed.into_iter().next() {
+        output.extend_from_slice(&channel);
+    }
+    output.truncate(expected + resampler.output_delay());
     Ok(output)
 }
 
@@ -420,10 +428,9 @@ mod tests {
 
         let output = resample_to_pipeline_rate(&input, in_rate).unwrap();
 
-        // Length tracks the 1/3 ratio (allowing for resampler group delay lost
-        // to truncation).
+        // Length tracks the 1/3 ratio plus resampler output delay.
         assert!(
-            (15_500..=16_000).contains(&output.len()),
+            (16_030..=16_050).contains(&output.len()),
             "unexpected length {}",
             output.len()
         );
