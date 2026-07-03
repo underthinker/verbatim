@@ -453,4 +453,23 @@ mod tests {
         assert!((out[0] - 0.5).abs() < 1e-6);
         assert!((out[1] - 0.3).abs() < 1e-6);
     }
+
+    #[test]
+    fn zero_input_rate_returns_error() {
+        let result = resample_to_pipeline_rate(&[0.1, -0.2], 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn short_input_less_than_one_chunk_resamples_correctly() {
+        let in_rate = 48_000u32;
+        let input: Vec<f32> = (0..100)
+            .map(|i| (TAU * 440.0 * i as f32 / in_rate as f32).sin())
+            .collect();
+        let output = resample_to_pipeline_rate(&input, in_rate).unwrap();
+        assert!(output.len() < 100, "downsampled output shorter than input");
+        assert!(!output.is_empty());
+        assert!(output.iter().all(|s| s.abs() <= 1.5));
+    }
+
 }

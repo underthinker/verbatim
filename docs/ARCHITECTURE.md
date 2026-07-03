@@ -35,7 +35,7 @@ Cargo workspace (details of the full repo tree in ENGINEERING.md):
 | Crate | Layer | Contents |
 |---|---|---|
 | `verbatim-core` | Core | session state machine, session runner actor, audio pipeline, VAD, polish pipeline, model manager, config, history, event bus; depends on trait definitions only |
-| `verbatim-platform` | Platform | trait definitions (`HotkeyManager`, `AudioCapture`, `TextInjector`, `ClipboardGuard`, `PermissionProbe`, `FocusTracker`, `Autostart`) and the per-OS implementations (`macos/`, `windows/`, `linux/` modules) |
+| `verbatim-platform` | Platform | trait definitions (`HotkeyManager`, `AudioCapture`, `TextInjector`, `ClipboardGuard`, `PermissionProbe`, `FocusTracker`, `Autostart`), optional real cpal mic capture (feature `cpal-audio`), per-OS implementations (`macos/`, `windows/`, `linux/` modules), and fakes |
 | `verbatim-engines` | Engine | `TranscriptionEngine` + `PolishEngine` traits, `whisper-cpp`, `sherpa-onnx`, `llama-cpp` implementations behind feature flags, engine registry |
 | `verbatim-app` | UI | Tauri shell: command handlers, event bridge, tray, overlay window management, CLI entry (`verbatim daemon`/`trigger`/`status`) |
 

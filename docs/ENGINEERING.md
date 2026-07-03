@@ -10,7 +10,7 @@ verbatim/
 ├── Cargo.toml                  # workspace
 ├── crates/
 │   ├── verbatim-core/
-│   ├── verbatim-platform/      # traits + macos/ windows/ linux/ impls
+│   ├── verbatim-platform/      # traits + macos/ windows/ linux/ impls + optional real cpal capture (cpal-audio)
 │   ├── verbatim-engines/       # whisper-cpp, sherpa-onnx, llama-cpp (feature-gated)
 │   └── verbatim-app/           # tauri shell + CLI entry
 ├── ui/                         # React + TypeScript + Vite (webview sources)
@@ -35,7 +35,7 @@ verbatim/
 | Shell | Tauri 2 | overlay via non-activating always-on-top window; tray via tauri tray API |
 | Core language | Rust (stable, edition 2024) | MSRV pinned in workspace |
 | UI | React 18 + TypeScript strict + Vite + Tailwind | no runtime CSS-in-JS; design tokens shared with overlay |
-| Audio | cpal | behind `AudioCapture` trait |
+| Audio | cpal (optional, `cpal-audio`) | behind `AudioCapture` trait |
 | VAD | Silero via sherpa-onnx (single ONNX runtime dependency) | evaluate `voice_activity_detector` crate as lighter alternative in M1 |
 | ASR | whisper-rs (whisper.cpp), sherpa-onnx (Parakeet) | backend features: metal, cuda, vulkan, cpu |
 | Polish | llama-cpp-2 | resident context; model per hardware tier |
