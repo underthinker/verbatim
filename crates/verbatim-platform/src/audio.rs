@@ -113,6 +113,7 @@ impl AudioCapture for CpalAudioCapture {
     }
 
     fn abort(&mut self) {
+        self.capturing.store(false, Ordering::SeqCst);
         let _ = self.commands.send(Command::Abort);
     }
 
