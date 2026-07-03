@@ -1,0 +1,20 @@
+[package]
+name = "verbatim-app"
+description = "Application shell: CLI entry now, Tauri shell during M1 wire-up"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "verbatim"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+verbatim-core.workspace = true
+verbatim-engines.workspace = true
+verbatim-platform.workspace = true
+
+[lints]
+workspace = true

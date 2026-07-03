@@ -1,0 +1,19 @@
+[package]
+name = "verbatim-engines"
+description = "Engine layer: transcription and polish engine traits, registry, and fakes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[features]
+# Real engine implementations land during M1 wire-up (ARCHITECTURE.md 4.2/4.3).
+whisper-cpp = []
+sherpa-onnx = []
+llama-cpp = []
+
+[lints]
+workspace = true

@@ -24,3 +24,6 @@ dist/
 
 # Spike scratch output
 spikes/**/out/
+
+# Tooling caches
+.impeccable/

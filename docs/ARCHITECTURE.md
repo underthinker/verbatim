@@ -41,7 +41,7 @@ Cargo workspace (details of the full repo tree in ENGINEERING.md):
 
 ## 3. The session state machine
 
-The core owns one `DictationSession` state machine, exactly mirroring UX.md section 2: `Idle -> Arming -> Recording -> Finalizing -> Transcribing -> Polishing -> Injecting -> Idle`, plus `Cancelled` and per-state error edges (UX error catalog E1-E10).
+The core owns one `DictationSession` state machine, exactly mirroring UX.md section 2: `Idle -> Arming -> Recording -> Finalizing -> Transcribing -> Polishing -> Injecting -> Idle`, plus a Cancel edge back to `Idle` and per-state error edges (UX error catalog E1-E10).
 
 - Implemented as an explicit enum + transition table; illegal transitions are compile-time-visible and log-fatal in debug builds.
 - The pipeline tail (Transcribing onward) is asynchronous: a new session may start Arming while the previous session's tail is still running (UX hotkey-chaining rule). Concurrency is bounded to one recording + N pipeline tails (N=2, older tails complete first to preserve injection order).
