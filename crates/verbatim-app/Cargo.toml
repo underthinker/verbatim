@@ -24,6 +24,9 @@ verbatim-platform.workspace = true
 # Transcription/injection stay fake until their phases land, so this only
 # swaps the capture seam. Tests always run on fakes.
 real-audio = ["verbatim-platform/cpal-audio"]
+# Boot the daemon on real whisper.cpp transcription (model path from
+# VERBATIM_WHISPER_MODEL). Injection stays fake until its phase.
+real-transcription = ["verbatim-engines/whisper-cpp"]
 
 [lints]
 workspace = true
