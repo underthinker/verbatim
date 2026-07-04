@@ -117,6 +117,18 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
         .build()?;
     let _guard = runtime.enter();
 
+    // Log every session transition so a manual hotkey test shows the key
+    // driving the state machine live (Idle -> Recording -> ... -> Idle).
+    let mut transitions = events.subscribe();
+    runtime.spawn(async move {
+        use verbatim_core::event::Event;
+        while let Ok(event) = transitions.recv().await {
+            if let Event::SessionTransition { from, to, .. } = event {
+                tracing::info!(?from, ?to, "session transition");
+            }
+        }
+    });
+
     let (runner, handle) = SessionRunner::new(build_deps(), RunnerConfig::default(), events);
     runtime.spawn(runner.run());
 
