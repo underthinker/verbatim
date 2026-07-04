@@ -19,7 +19,7 @@ Remaining acceptance criteria:
 
 Scope: hotkey -> record -> whisper.cpp -> inject raw text, tray icon with quit, `verbatim daemon`/`trigger`/`status` CLI, SessionRunner actor with fake-pipeline orchestration, trigger IPC protocol (closed verb set on a Unix domain socket), fake-capture test seam, CI matrix from the first commit.
 
-Acceptance criteria:
+Acceptance criteria (open items tracked in the [M1 - Walking skeleton milestone](https://github.com/underthinker/verbatim/milestone/1)):
 
 - [x] Fresh checkout builds and packages unsigned dev artifacts on all platforms in CI. (2026-07-04: Phase 8, PR #10 - `Package unsigned dev artifact` jobs green on macos-latest, macos-15-intel, ubuntu-24.04, windows-latest.)
 - [ ] Dictation lands text in a foreign app on all platforms, including GNOME Wayland (portal or uinput) and KDE.
