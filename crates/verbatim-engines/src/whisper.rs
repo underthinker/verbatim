@@ -120,9 +120,9 @@ impl TranscriptionEngine for WhisperCppEngine {
 
         let mut segments = Vec::with_capacity(segment_count.max(0) as usize);
         for index in 0..segment_count {
-            let segment = state.get_segment(index).ok_or_else(|| {
-                EngineError::Inference("segment out of bounds".to_owned())
-            })?;
+            let segment = state
+                .get_segment(index)
+                .ok_or_else(|| EngineError::Inference("segment out of bounds".to_owned()))?;
             let text = segment
                 .to_str()
                 .map_err(|err| EngineError::Inference(err.to_string()))?;
