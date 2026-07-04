@@ -47,3 +47,49 @@ jobs:
       - run: cargo build --locked --workspace --all-features
         env:
           GGML_NO_I8MM: 1
+
+  package:
+    name: Package unsigned dev artifact (${{ matrix.os }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        # Per-platform real feature sets, not --all-features: an artifact
+        # ships exactly the backends its OS uses (plan phase 8). Signing and
+        # notarization are the M4 release pipeline (ENGINEERING.md 7); M1
+        # wants unsigned dev artifacts only.
+        include:
+          - os: macos-latest
+            artifact: verbatim-dev-macos-arm64
+            features: real-audio,real-transcription,real-injection,global-hotkey
+          - os: macos-15-intel
+            artifact: verbatim-dev-macos-x64
+            features: real-audio,real-transcription,real-injection,global-hotkey
+          - os: windows-latest
+            artifact: verbatim-dev-windows-x64
+            features: real-audio,real-transcription,real-injection
+          - os: ubuntu-24.04
+            artifact: verbatim-dev-linux-x64
+            features: real-audio,real-transcription,real-injection
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - run: cargo build --release --locked -p verbatim-app --features ${{ matrix.features }}
+        env:
+          GGML_NO_I8MM: 1
+      - name: Archive binary (Unix)
+        if: runner.os != 'Windows'
+        run: tar -czf ${{ matrix.artifact }}.tar.gz -C target/release verbatim
+      - name: Archive binary (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path target/release/verbatim.exe -DestinationPath ${{ matrix.artifact }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.*
+          if-no-files-found: error
