@@ -24,7 +24,7 @@ Acceptance criteria:
 - [x] Fresh checkout builds and packages unsigned dev artifacts on all platforms in CI. (2026-07-04: Phase 8, PR #10 - `Package unsigned dev artifact` jobs green on macos-latest, macos-15-intel, ubuntu-24.04, windows-latest.)
 - [ ] Dictation lands text in a foreign app on all platforms, including GNOME Wayland (portal or uinput) and KDE.
 - [ ] Injection failure is detected honestly (no silent success) and falls back to clipboard.
-- [ ] p50 raw latency < 800 ms for a 10 s utterance on Apple Silicon and the reference Windows laptop (resident model). (2026-07-04: raw-latency bench harness + per-runner regression gate landed in CI on `main` - PRs #11/#13/#14. CI runs on virtualised runners only, which cannot meet the 800 ms budget by design; the real-hardware measurement on Apple Silicon and the reference Windows laptop is still outstanding.)
+- [ ] p50 raw latency < 800 ms for a 10 s utterance on Apple Silicon and the reference Windows laptop (resident model). (2026-07-04: raw-latency bench harness + per-runner regression gate landed in CI on `main` - PRs #11/#13/#14. CI runs on virtualised runners only, which cannot meet the 800 ms budget by design; the real-hardware measurement on Apple Silicon and the reference Windows laptop is still outstanding - tracked in #16.)
 - [ ] State machine has exhaustive unit tests; E2E smoke test green on all platforms.
 
 ## M2 - UX shell
