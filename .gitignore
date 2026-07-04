@@ -27,3 +27,6 @@ spikes/**/out/
 
 # Tooling caches
 .impeccable/
+
+# Keep the benchmark speech fixture tracked despite the *.wav rule above.
+!benches/fixtures/jfk.wav
