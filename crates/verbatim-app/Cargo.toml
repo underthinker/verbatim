@@ -19,5 +19,11 @@ verbatim-core.workspace = true
 verbatim-engines.workspace = true
 verbatim-platform.workspace = true
 
+[features]
+# Boot the daemon on the real cpal microphone instead of the fake fixture.
+# Transcription/injection stay fake until their phases land, so this only
+# swaps the capture seam. Tests always run on fakes.
+real-audio = ["verbatim-platform/cpal-audio"]
+
 [lints]
 workspace = true

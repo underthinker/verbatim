@@ -25,7 +25,7 @@ Cargo workspace (Rust stable, edition 2024, MSRV 1.85 pinned via `rust-toolchain
 | Crate | Layer | Contents |
 |---|---|---|
 | `verbatim-core` | Core | session state machine, event bus, error taxonomy, session runner actor |
-| `verbatim-platform` | Platform | hotkey/audio/injection/clipboard/permission/focus/autostart traits, deterministic fakes, per-OS stubs |
+| `verbatim-platform` | Platform | hotkey/audio/injection/clipboard/permission/focus/autostart traits, deterministic fakes, per-OS stubs, optional real cpal mic capture (`cpal-audio` feature) |
 | `verbatim-engines` | Engine | transcription + polish traits, engine registry, fakes |
 | `verbatim-app` | App | the `verbatim` binary (`daemon`/`trigger`/`status` CLI; Tauri shell joins later in M1) |
 

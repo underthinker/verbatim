@@ -4,6 +4,8 @@
 //! Rules: implementations may not leak OS types across the trait boundary,
 //! and anything with `#[cfg(target_os)]` lives here, never in core.
 
+#[cfg(feature = "cpal-audio")]
+pub mod audio;
 mod errors;
 pub mod fake;
 mod traits;
