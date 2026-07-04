@@ -30,7 +30,7 @@ real-transcription = ["verbatim-engines/whisper-cpp"]
 # Boot the daemon on the real macOS injection + focus seams instead of the
 # fakes (macOS only). Clipboard/permission probes ship in the same crate for
 # the shell to call. Tests always run on fakes.
-real-injection = ["verbatim-platform/mac-inject"]
+real-injection = ["verbatim-platform/mac-inject", "verbatim-platform/linux-inject"]
 
 # Drive the daemon from a real global hotkey instead of CLI triggers only.
 # Hold/toggle semantics live in core; this only registers the OS chord.

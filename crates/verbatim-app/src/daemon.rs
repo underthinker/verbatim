@@ -62,6 +62,62 @@ fn fake_model() -> ModelHandle {
 pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
     let (runner, handle) = SessionRunner::new(build_deps(), RunnerConfig::default(), events);
     tokio::spawn(runner.run());
+
+    // Phase 6: GlobalShortcuts-portal hotkey (spike 1). Unlike the macOS
+    // backend this needs no main-thread run loop; the portal listener lives on
+    // its own thread and the backend only has to outlive the server. A
+    // registration failure degrades to CLI-only triggers (GNOME < 48 lacks a
+    // working GlobalShortcuts portal; the documented fallback is a custom
+    // shortcut running `verbatim trigger`).
+    #[cfg(all(feature = "real-injection", target_os = "linux"))]
+    let _hotkey = {
+        use std::time::Instant;
+
+        use verbatim_core::hotkey::{HotkeyMode, HotkeySemantics};
+        use verbatim_platform::linux::PortalHotkeyBackend;
+        use verbatim_platform::{HotkeyBinding, HotkeyManager};
+
+        let chord =
+            std::env::var("VERBATIM_HOTKEY").unwrap_or_else(|_| "CTRL+ALT+SPACE".to_owned());
+        let mode = match std::env::var("VERBATIM_HOTKEY_MODE").as_deref() {
+            Ok("toggle") => HotkeyMode::Toggle,
+            // Activated/Deactivated arrive as a pair, so push-to-talk holds work.
+            _ => HotkeyMode::Hold,
+        };
+
+        let (edge_tx, mut edge_rx) = tokio::sync::mpsc::unbounded_channel();
+        {
+            let handle = handle.clone();
+            tokio::spawn(async move {
+                let mut semantics = HotkeySemantics::new(mode);
+                while let Some(event) = edge_rx.recv().await {
+                    if let Some(trigger) = semantics.on_event(event, Instant::now())
+                        && handle.trigger(trigger).await.is_err()
+                    {
+                        break; // runner gone
+                    }
+                }
+            });
+        }
+
+        let mut backend = PortalHotkeyBackend::new();
+        match backend.register(
+            &HotkeyBinding {
+                chord: chord.clone(),
+            },
+            Box::new(move |event| {
+                let _ = edge_tx.send(event);
+            }),
+        ) {
+            Ok(()) => tracing::info!(%chord, ?mode, "portal global shortcut registered"),
+            Err(err) => tracing::warn!(
+                %chord, ?err,
+                "portal hotkey registration failed; CLI triggers still work"
+            ),
+        }
+        backend
+    };
+
     serve_with_handle(path, handle).await
 }
 
@@ -241,6 +297,12 @@ fn build_deps() -> RunnerDeps {
     {
         deps.injector = Box::new(verbatim_platform::macos::MacTextInjector::new());
         deps.focus = Box::new(verbatim_platform::macos::MacFocusTracker::new());
+    }
+    // Phase 6: real Linux injection (portal -> uinput -> clipboard, spike 1).
+    #[cfg(all(feature = "real-injection", target_os = "linux"))]
+    {
+        deps.injector = Box::new(verbatim_platform::linux::LinuxTextInjector::new());
+        deps.focus = Box::new(verbatim_platform::linux::LinuxFocusTracker::new());
     }
     deps
 }
