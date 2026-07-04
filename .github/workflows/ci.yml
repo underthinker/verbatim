@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Lets a PR exercise the main-pipeline bench job on demand.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -93,3 +95,51 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.*
           if-no-files-found: error
+
+  bench:
+    name: Latency bench (${{ matrix.os }})
+    # Main pipeline only (ENGINEERING.md 6): PRs stay fast, regressions are
+    # caught on merge. workflow_dispatch lets a branch run it on demand.
+    if: github.event_name != 'pull_request'
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        # ROADMAP M1 criterion 4 asserts the 800 ms p50 budget on Apple
+        # Silicon; Windows tracks its own runner baseline only (the budget on
+        # reference hardware is a manual, hardware-bound measurement).
+        include:
+          - os: macos-latest
+            budget_ms: "800"
+          - os: windows-latest
+            budget_ms: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Cache whisper model
+        id: model-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/whisper-models
+          key: ggml-base.en-q5
+      - name: Download whisper model
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p ~/whisper-models
+          curl -sSfL -o ~/whisper-models/ggml-base.en.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+      - name: Run latency bench
+        shell: bash
+        run: |
+          MODEL="$HOME/whisper-models/ggml-base.en.bin"
+          if [ "$RUNNER_OS" = "Windows" ]; then MODEL="$(cygpath -w "$MODEL")"; fi
+          VERBATIM_WHISPER_MODEL="$MODEL" \
+            cargo bench --locked -p verbatim-engines --features whisper-cpp --bench latency
+        env:
+          GGML_NO_I8MM: 1
+          VERBATIM_BENCH_REQUIRE: 1
+          VERBATIM_BENCH_BASELINE: ${{ matrix.os }}
+          VERBATIM_BENCH_MAX_P50_MS: ${{ matrix.budget_ms }}
