@@ -13,9 +13,9 @@
 //!   stream therefore never leaves a dedicated worker thread; `CpalAudioCapture`
 //!   only holds a command channel plus shared atomics, which are `Send + Sync`.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -471,5 +471,4 @@ mod tests {
         assert!(!output.is_empty());
         assert!(output.iter().all(|s| s.abs() <= 1.5));
     }
-
 }
