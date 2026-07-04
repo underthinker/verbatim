@@ -1,20 +1,20 @@
 //! Trigger clients: `verbatim trigger <verb>` and `verbatim status` connect to
-//! the daemon socket, send one request, print the reply. This is how native
+//! the daemon endpoint, send one request, print the reply. This is how native
 //! shortcut bindings drive dictation and how scripts integrate
-//! (ARCHITECTURE.md 6). Unix-only for this slice, matching the daemon.
+//! (ARCHITECTURE.md 6).
 
 use std::path::Path;
 use std::process::ExitCode;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
 
 use crate::ipc::{Request, Response};
+use crate::transport;
 
 /// Connect, send `request`, print the daemon's reply. A missing daemon or a
 /// rejected request is a non-zero exit; a served reply prints to stdout.
 pub async fn run(path: &Path, request: Request) -> ExitCode {
-    let stream = match UnixStream::connect(path).await {
+    let stream = match transport::connect(path).await {
         Ok(stream) => stream,
         Err(_) => {
             eprintln!(
@@ -25,7 +25,7 @@ pub async fn run(path: &Path, request: Request) -> ExitCode {
         }
     };
 
-    let (reader, mut writer) = stream.into_split();
+    let (reader, mut writer) = tokio::io::split(stream);
     if let Err(err) = writer.write_all(request.encode().as_bytes()).await {
         eprintln!("verbatim: could not send request: {err}");
         return ExitCode::FAILURE;

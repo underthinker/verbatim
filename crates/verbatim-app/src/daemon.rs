@@ -1,16 +1,14 @@
-//! The daemon: it owns the tokio runtime, the `SessionRunner`, and the Unix
-//! domain socket that trigger clients connect to (ARCHITECTURE.md 6).
+//! The daemon: it owns the tokio runtime, the `SessionRunner`, and the trigger
+//! endpoint clients connect to (ARCHITECTURE.md 6) - a Unix domain socket on
+//! Unix, a named pipe on Windows (`transport.rs`).
 //!
-//! Phase 1 boots the runner on fakes; real audio/ASR/injection swap in behind
-//! the same traits in later phases. The socket transport is Unix-only by
-//! design for this slice - Windows IPC lands with the Windows backend.
+//! Phase 1 booted the runner on fakes; real audio/ASR/injection swap in behind
+//! the same traits, one feature-gated phase at a time.
 
 use std::path::Path;
 use std::sync::Arc;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
-use tokio::signal::unix::{SignalKind, signal};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 
 use verbatim_core::event::EventBus;
 use verbatim_core::runner::{RunnerConfig, RunnerDeps, RunnerHandle, SessionRunner};
@@ -22,6 +20,7 @@ use verbatim_engines::{
 use verbatim_platform::fake::{FakeAudioCapture, FakeFocusTracker, FakeTextInjector};
 
 use crate::ipc::{Request, Response};
+use crate::transport;
 
 /// Build the fake pipeline the Phase 1 daemon runs on. Every seam is a
 /// deterministic fake; real backends replace these one phase at a time.
@@ -113,6 +112,60 @@ pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
             Err(err) => tracing::warn!(
                 %chord, ?err,
                 "portal hotkey registration failed; CLI triggers still work"
+            ),
+        }
+        backend
+    };
+
+    // Phase 7: RegisterHotKey-backed hotkey (windows doc stub). The backend
+    // owns its message-loop thread, so like the Linux portal backend it only
+    // has to outlive the server; a registration failure (chord taken) degrades
+    // to CLI-only triggers.
+    #[cfg(all(feature = "real-injection", target_os = "windows"))]
+    let _hotkey = {
+        use std::time::Instant;
+
+        use verbatim_core::hotkey::{HotkeyMode, HotkeySemantics};
+        use verbatim_platform::windows::WinHotkeyBackend;
+        use verbatim_platform::{HotkeyBinding, HotkeyManager};
+
+        let chord =
+            std::env::var("VERBATIM_HOTKEY").unwrap_or_else(|_| "CTRL+ALT+SPACE".to_owned());
+        let mode = match std::env::var("VERBATIM_HOTKEY_MODE").as_deref() {
+            Ok("toggle") => HotkeyMode::Toggle,
+            // WM_HOTKEY presses are paired with polled release edges, so
+            // push-to-talk holds work.
+            _ => HotkeyMode::Hold,
+        };
+
+        let (edge_tx, mut edge_rx) = tokio::sync::mpsc::unbounded_channel();
+        {
+            let handle = handle.clone();
+            tokio::spawn(async move {
+                let mut semantics = HotkeySemantics::new(mode);
+                while let Some(event) = edge_rx.recv().await {
+                    if let Some(trigger) = semantics.on_event(event, Instant::now())
+                        && handle.trigger(trigger).await.is_err()
+                    {
+                        break; // runner gone
+                    }
+                }
+            });
+        }
+
+        let mut backend = WinHotkeyBackend::new();
+        match backend.register(
+            &HotkeyBinding {
+                chord: chord.clone(),
+            },
+            Box::new(move |event| {
+                let _ = edge_tx.send(event);
+            }),
+        ) {
+            Ok(()) => tracing::info!(%chord, ?mode, "global hotkey registered"),
+            Err(err) => tracing::warn!(
+                %chord, ?err,
+                "hotkey registration failed; CLI triggers still work"
             ),
         }
         backend
@@ -269,7 +322,7 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
 
     // On a tray quit the socket server task never ran its own cleanup, so clear
     // the socket here; a signal-driven shutdown already removed it (ignored).
-    let _ = std::fs::remove_file(path);
+    transport::cleanup(path);
     Ok(())
 }
 
@@ -304,6 +357,13 @@ fn build_deps() -> RunnerDeps {
         deps.injector = Box::new(verbatim_platform::linux::LinuxTextInjector::new());
         deps.focus = Box::new(verbatim_platform::linux::LinuxFocusTracker::new());
     }
+    // Phase 7: real Windows injection (SendInput -> clipboard paste ->
+    // clipboard-only, windows doc stub).
+    #[cfg(all(feature = "real-injection", target_os = "windows"))]
+    {
+        deps.injector = Box::new(verbatim_platform::windows::WinTextInjector::new());
+        deps.focus = Box::new(verbatim_platform::windows::WinFocusTracker::new());
+    }
     deps
 }
 
@@ -333,17 +393,17 @@ fn real_transcription() -> Option<Box<dyn TranscriptionEngine>> {
 /// Serve an already-constructed runner. Split out so tests can subscribe to the
 /// bus and hold the handle before any client connects.
 pub async fn serve_with_handle(path: &Path, handle: RunnerHandle) -> std::io::Result<()> {
-    let listener = bind(path)?;
+    let mut listener = transport::Listener::bind(path)?;
     let path = path.to_owned();
     tracing::info!(path = %path.display(), "verbatim daemon listening");
 
-    let mut term = signal(SignalKind::terminate())?;
-    let mut int = signal(SignalKind::interrupt())?;
+    let shutdown = shutdown_signal();
+    tokio::pin!(shutdown);
 
     loop {
         tokio::select! {
             result = listener.accept() => {
-                let (stream, _addr) = result?;
+                let stream = result?;
                 let handle = handle.clone();
                 tokio::spawn(async move {
                     if let Err(err) = handle_connection(stream, handle).await {
@@ -351,45 +411,49 @@ pub async fn serve_with_handle(path: &Path, handle: RunnerHandle) -> std::io::Re
                     }
                 });
             }
-            _ = term.recv() => {
-                tracing::info!("received SIGTERM, shutting down");
-                break;
-            }
-            _ = int.recv() => {
-                tracing::info!("received SIGINT, shutting down");
-                break;
-            }
+            _ = &mut shutdown => break,
         }
     }
 
-    let _ = std::fs::remove_file(&path);
+    transport::cleanup(&path);
     Ok(())
 }
 
-/// Bind the listening socket owner-only, clearing any stale socket file first.
-fn bind(path: &Path) -> std::io::Result<UnixListener> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
+/// Resolve when the OS asks the daemon to shut down (SIGTERM/SIGINT on Unix,
+/// Ctrl-C/console-close on Windows).
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let (Ok(mut term), Ok(mut int)) = (
+            signal(SignalKind::terminate()),
+            signal(SignalKind::interrupt()),
+        ) else {
+            // No signal handler means no orderly shutdown request can arrive;
+            // park forever and let the process be killed instead.
+            std::future::pending::<()>().await;
+            return;
+        };
+        tokio::select! {
+            _ = term.recv() => tracing::info!("received SIGTERM, shutting down"),
+            _ = int.recv() => tracing::info!("received SIGINT, shutting down"),
+        }
     }
-    // A leftover socket from a previous run would make bind fail with EADDRINUSE.
-    match std::fs::remove_file(path) {
-        Ok(()) => {}
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-        Err(err) => return Err(err),
+    #[cfg(windows)]
+    {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            tracing::info!("received Ctrl-C, shutting down");
+        } else {
+            std::future::pending::<()>().await;
+        }
     }
-    let listener = UnixListener::bind(path)?;
-    restrict_to_owner(path)?;
-    Ok(listener)
 }
 
-#[cfg(unix)]
-fn restrict_to_owner(path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-}
-
-async fn handle_connection(stream: UnixStream, handle: RunnerHandle) -> std::io::Result<()> {
-    let (reader, mut writer) = stream.into_split();
+async fn handle_connection<S>(stream: S, handle: RunnerHandle) -> std::io::Result<()>
+where
+    S: AsyncRead + AsyncWrite,
+{
+    let (reader, mut writer) = tokio::io::split(stream);
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
     if reader.read_line(&mut line).await? == 0 {
@@ -438,6 +502,7 @@ mod tests {
 
     // Short path: Unix socket paths are capped near 104 bytes on macOS, so we
     // stay in /tmp rather than the (long) sandboxed temp dir.
+    #[cfg(unix)]
     fn temp_socket() -> PathBuf {
         let unique = COUNTER.fetch_add(1, Ordering::SeqCst);
         PathBuf::from(format!(
@@ -446,9 +511,18 @@ mod tests {
         ))
     }
 
-    async fn connect_retry(path: &Path) -> UnixStream {
+    #[cfg(windows)]
+    fn temp_socket() -> PathBuf {
+        let unique = COUNTER.fetch_add(1, Ordering::SeqCst);
+        PathBuf::from(format!(
+            r"\\.\pipe\vbtm-test-{}-{unique}",
+            std::process::id()
+        ))
+    }
+
+    async fn connect_retry(path: &Path) -> transport::ClientStream {
         for _ in 0..100 {
-            if let Ok(stream) = UnixStream::connect(path).await {
+            if let Ok(stream) = transport::connect(path).await {
                 return stream;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -459,7 +533,7 @@ mod tests {
     /// One request/response round trip over the socket.
     async fn request(path: &Path, line: &str) -> String {
         let stream = connect_retry(path).await;
-        let (reader, mut writer) = stream.into_split();
+        let (reader, mut writer) = tokio::io::split(stream);
         writer.write_all(line.as_bytes()).await.unwrap();
         writer.flush().await.unwrap();
         let mut reader = BufReader::new(reader);

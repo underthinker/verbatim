@@ -5,8 +5,8 @@
 //! never text payloads; other processes must never be able to inject text
 //! through us. The wire protocol enforces this - see `ipc.rs`.
 //!
-//! The socket transport is Unix-only for this slice; the Windows backend and
-//! its IPC land later in M1.
+//! The transport is a Unix domain socket on Unix and a named pipe on Windows
+//! (`transport.rs`); the wire protocol is byte-identical on both.
 
 #![forbid(unsafe_code)]
 
@@ -14,12 +14,10 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-#[cfg(unix)]
 mod client;
-#[cfg(unix)]
 mod daemon;
-#[cfg(unix)]
 mod ipc;
+mod transport;
 
 #[derive(Parser)]
 #[command(
@@ -76,7 +74,6 @@ fn block_on<F: std::future::Future<Output = ExitCode>>(fut: F) -> ExitCode {
     }
 }
 
-#[cfg(unix)]
 fn run_daemon() -> ExitCode {
     init_tracing();
     let events = std::sync::Arc::new(verbatim_core::event::EventBus::default());
@@ -107,7 +104,6 @@ fn run_daemon() -> ExitCode {
     })
 }
 
-#[cfg(unix)]
 async fn run_trigger(verb: TriggerVerb) -> ExitCode {
     let verb = match verb {
         TriggerVerb::Start => ipc::Verb::Start,
@@ -117,36 +113,13 @@ async fn run_trigger(verb: TriggerVerb) -> ExitCode {
     client::run(&ipc::socket_path(), ipc::Request::Trigger(verb)).await
 }
 
-#[cfg(unix)]
 async fn run_status() -> ExitCode {
     client::run(&ipc::socket_path(), ipc::Request::Status).await
 }
 
-#[cfg(unix)]
 fn init_tracing() {
     // Best-effort: a daemon with no log sink is still functional.
     let _ = tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .try_init();
-}
-
-#[cfg(not(unix))]
-fn run_daemon() -> ExitCode {
-    unsupported("the daemon")
-}
-
-#[cfg(not(unix))]
-async fn run_trigger(_verb: TriggerVerb) -> ExitCode {
-    unsupported("trigger IPC")
-}
-
-#[cfg(not(unix))]
-async fn run_status() -> ExitCode {
-    unsupported("status IPC")
-}
-
-#[cfg(not(unix))]
-fn unsupported(what: &str) -> ExitCode {
-    eprintln!("verbatim: {what} requires a Unix platform; Windows support lands later in M1");
-    ExitCode::FAILURE
 }

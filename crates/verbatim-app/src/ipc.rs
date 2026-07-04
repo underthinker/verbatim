@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use verbatim_core::runner::Trigger;
 
 /// The socket file name inside the runtime directory.
+#[cfg(not(target_os = "windows"))]
 pub const SOCKET_FILE: &str = "verbatim.sock";
 
 /// The environment override for the socket path (tests, non-default installs).
@@ -105,16 +106,31 @@ impl Response {
     }
 }
 
-/// The socket path: `$VERBATIM_SOCK` if set, else the per-user runtime dir.
+/// The endpoint path: `$VERBATIM_SOCK` if set, else the per-user runtime dir
+/// (Unix socket) or a per-user named pipe (Windows).
 ///
-/// The default lives under the platform application-support directory rather
-/// than a world-writable location; the daemon further restricts the socket to
-/// owner-only. `$VERBATIM_SOCK` keeps tests off the real user directory.
+/// The Unix default lives under the platform application-support directory
+/// rather than a world-writable location; the daemon further restricts the
+/// socket to owner-only. `$VERBATIM_SOCK` keeps tests off the real user
+/// directory.
 pub fn socket_path() -> PathBuf {
     if let Ok(path) = std::env::var(SOCKET_ENV) {
         return PathBuf::from(path);
     }
+    default_endpoint()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn default_endpoint() -> PathBuf {
     runtime_dir().join(SOCKET_FILE)
+}
+
+/// Named pipes live in a flat namespace, so the per-user scoping that a
+/// home-directory path gives Unix comes from the user name in the pipe name.
+#[cfg(target_os = "windows")]
+fn default_endpoint() -> PathBuf {
+    let user = std::env::var("USERNAME").unwrap_or_else(|_| "default".to_owned());
+    PathBuf::from(format!(r"\\.\pipe\verbatim-{user}"))
 }
 
 #[cfg(target_os = "macos")]
@@ -127,7 +143,7 @@ fn runtime_dir() -> PathBuf {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn runtime_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
         return PathBuf::from(dir).join("verbatim");
