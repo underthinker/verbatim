@@ -118,3 +118,23 @@ async fn toggle_press_starts_then_next_press_stops() {
     manager.release();
     wait_for_state(&handle, SessionState::Idle).await;
 }
+
+#[tokio::test]
+async fn hold_push_to_talk_records_while_held() {
+    // The default right-Option trigger: hold to record, release to stop. The
+    // release must land past the 250 ms accidental-press window to count as a
+    // real hold rather than a tap-lock, so we wait it out.
+    let handle = spawn_runner();
+    let manager = wire_hotkey(
+        FakeHotkeyManager::default(),
+        HotkeyMode::Hold,
+        handle.clone(),
+    );
+
+    manager.press();
+    wait_for_state(&handle, SessionState::Recording).await;
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    manager.release();
+    wait_for_state(&handle, SessionState::Idle).await;
+}

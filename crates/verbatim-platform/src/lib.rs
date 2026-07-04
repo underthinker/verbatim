@@ -10,6 +10,8 @@ mod errors;
 pub mod fake;
 #[cfg(feature = "global-hotkey")]
 pub mod hotkey;
+#[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+pub mod modifier_tap;
 mod traits;
 mod types;
 

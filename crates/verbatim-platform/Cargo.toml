@@ -23,9 +23,12 @@ rubato = { version = "0.15", optional = true }
 global-hotkey = { version = "0.6", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-# macOS delivers global hotkeys through a Carbon handler on a CFRunLoop; the
-# real HotkeyManager pumps one on its own thread.
+# macOS hotkey delivery runs on the main thread's CFRunLoop; the real backend
+# pumps one there. The right-Option push-to-talk trigger is a CGEventTap on
+# flagsChanged (bare modifiers cannot be RegisterEventHotKey chords), added to
+# that same run loop.
 core-foundation = { version = "0.10", optional = true }
+core-graphics = { version = "0.25", optional = true }
 
 [features]
 # Compile the real cpal-backed AudioCapture. Off by default: tests and the
@@ -34,7 +37,7 @@ cpal-audio = ["dep:cpal", "dep:ringbuf", "dep:rubato"]
 
 # Compile the real global-hotkey-backed HotkeyManager. Off by default for the
 # same reason: fakes drive tests and headless CI.
-global-hotkey = ["dep:global-hotkey", "dep:core-foundation"]
+global-hotkey = ["dep:global-hotkey", "dep:core-foundation", "dep:core-graphics"]
 
 [lints]
 workspace = true

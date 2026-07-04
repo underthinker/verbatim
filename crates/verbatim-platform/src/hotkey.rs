@@ -21,6 +21,21 @@ use crate::errors::HotkeyError;
 use crate::traits::{HotkeyCallback, HotkeyManager};
 use crate::types::{HotkeyBinding, HotkeyEvent};
 
+/// A hotkey source that must be serviced from the thread owning the OS event
+/// loop (the main thread on macOS). The daemon holds one and calls [`pump`]
+/// (MainThreadHotkey::pump) in a loop; concrete backends decide what a pump
+/// does (drain a channel, or just run the run loop so a tap fires).
+pub trait MainThreadHotkey {
+    /// Advance the OS event loop for at most `timeout`, delivering edges.
+    fn pump(&self, timeout: Duration);
+}
+
+impl MainThreadHotkey for GlobalHotkeyBackend {
+    fn pump(&self, timeout: Duration) {
+        GlobalHotkeyBackend::pump(self, timeout);
+    }
+}
+
 /// A [`HotkeyManager`] backed by `global-hotkey`. Not `Send`: the manager must
 /// be created, pumped, and dropped on the one thread that owns the OS event
 /// loop (the main thread on macOS).
@@ -121,7 +136,7 @@ fn classify(message: String, chord: &str) -> HotkeyError {
 /// delivered. macOS needs an explicit `CFRunLoop`; other platforms drive their
 /// delivery elsewhere, so we just sleep the interval.
 #[cfg(target_os = "macos")]
-fn pump_event_loop(timeout: Duration) {
+pub(crate) fn pump_event_loop(timeout: Duration) {
     use core_foundation::runloop::{CFRunLoop, kCFRunLoopDefaultMode};
 
     // Return early once a source (the hotkey handler) has been serviced.
@@ -129,6 +144,6 @@ fn pump_event_loop(timeout: Duration) {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn pump_event_loop(timeout: Duration) {
+pub(crate) fn pump_event_loop(timeout: Duration) {
     std::thread::sleep(timeout);
 }

@@ -95,15 +95,20 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
     use std::time::{Duration, Instant};
 
     use verbatim_core::hotkey::{HotkeyMode, HotkeySemantics};
-    use verbatim_platform::hotkey::GlobalHotkeyBackend;
-    use verbatim_platform::{HotkeyBinding, HotkeyManager};
+    use verbatim_platform::hotkey::{GlobalHotkeyBackend, MainThreadHotkey};
+    use verbatim_platform::modifier_tap::{ModifierKey, ModifierTapBackend};
+    use verbatim_platform::{HotkeyBinding, HotkeyCallback, HotkeyManager};
 
-    // Chord and mode are overridable for development; the defaults match a
-    // conservative, unlikely-to-clash chord and a toggle press.
-    let chord =
-        std::env::var("VERBATIM_HOTKEY").unwrap_or_else(|_| "CmdOrCtrl+Shift+Space".to_owned());
+    // The trigger is overridable; the default is the right Option key as
+    // push-to-talk. A bare right-side modifier is driven by a CGEventTap
+    // (`modifier_tap`); any other value is a chord bound via `global-hotkey`.
+    let chord = std::env::var("VERBATIM_HOTKEY").unwrap_or_else(|_| "RightOption".to_owned());
+    let modifier = ModifierKey::parse(&chord);
+    // Modifier keys default to push-to-talk (hold); chords default to toggle.
     let mode = match std::env::var("VERBATIM_HOTKEY_MODE").as_deref() {
         Ok("hold") => HotkeyMode::Hold,
+        Ok("toggle") => HotkeyMode::Toggle,
+        _ if modifier.is_some() => HotkeyMode::Hold,
         _ => HotkeyMode::Toggle,
     };
 
@@ -145,23 +150,48 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
         });
     }
 
-    // Register on this (main) thread and pump its run loop until shutdown.
-    let mut backend = GlobalHotkeyBackend::new();
-    match backend.register(
-        &HotkeyBinding {
-            chord: chord.clone(),
-        },
+    // Build the edge callback fresh per branch (it is consumed on registration).
+    let make_callback = || -> HotkeyCallback {
+        let edge_tx = edge_tx.clone();
         Box::new(move |event| {
             let _ = edge_tx.send(event);
-        }),
-    ) {
-        Ok(()) => tracing::info!(%chord, ?mode, "global hotkey registered"),
-        Err(err) => {
-            tracing::error!(%chord, ?err, "hotkey registration failed; CLI triggers still work")
+        })
+    };
+
+    // Register on this (main) thread; both backends deliver edges through their
+    // run-loop source, which the pump below services. A failure degrades to
+    // CLI-only: a bare, unregistered backend just idles the run loop.
+    let source: Box<dyn MainThreadHotkey> = match modifier {
+        Some(key) => match ModifierTapBackend::new(key, make_callback()) {
+            Ok(backend) => {
+                tracing::info!(%chord, ?mode, "modifier-key push-to-talk registered");
+                Box::new(backend)
+            }
+            Err(err) => {
+                tracing::error!(%chord, ?err, "hotkey registration failed; CLI triggers still work");
+                Box::new(GlobalHotkeyBackend::new())
+            }
+        },
+        None => {
+            let mut backend = GlobalHotkeyBackend::new();
+            match backend.register(
+                &HotkeyBinding {
+                    chord: chord.clone(),
+                },
+                make_callback(),
+            ) {
+                Ok(()) => tracing::info!(%chord, ?mode, "global hotkey registered"),
+                Err(err) => tracing::error!(
+                    %chord, ?err,
+                    "hotkey registration failed; CLI triggers still work"
+                ),
+            }
+            Box::new(backend)
         }
-    }
+    };
+
     while !shutdown.load(Ordering::SeqCst) {
-        backend.pump(Duration::from_millis(100));
+        source.pump(Duration::from_millis(100));
     }
     Ok(())
 }
