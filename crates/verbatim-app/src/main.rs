@@ -54,28 +54,57 @@ enum TriggerVerb {
     Toggle,
 }
 
-#[tokio::main]
-async fn main() -> ExitCode {
+fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command.unwrap_or(Command::Daemon) {
-        Command::Daemon => run_daemon().await,
-        Command::Trigger { verb } => run_trigger(verb).await,
-        Command::Status => run_status().await,
+        // The daemon may need to own the main thread's run loop (macOS global
+        // hotkey), so it manages its own runtime rather than running under one.
+        Command::Daemon => run_daemon(),
+        Command::Trigger { verb } => block_on(run_trigger(verb)),
+        Command::Status => block_on(run_status()),
+    }
+}
+
+/// Run a short-lived async client to completion on a fresh runtime.
+fn block_on<F: std::future::Future<Output = ExitCode>>(fut: F) -> ExitCode {
+    match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt.block_on(fut),
+        Err(err) => {
+            eprintln!("verbatim: runtime init failed: {err}");
+            ExitCode::FAILURE
+        }
     }
 }
 
 #[cfg(unix)]
-async fn run_daemon() -> ExitCode {
+fn run_daemon() -> ExitCode {
     init_tracing();
     let events = std::sync::Arc::new(verbatim_core::event::EventBus::default());
     let path = ipc::socket_path();
-    match daemon::serve(&path, events).await {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("verbatim: daemon failed: {err}");
-            ExitCode::FAILURE
+
+    // On macOS the global hotkey is delivered only on the main thread's run
+    // loop, so that path owns this thread and runs tokio on background workers.
+    #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+    {
+        match daemon::serve_with_hotkey(&path, events) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("verbatim: daemon failed: {err}");
+                ExitCode::FAILURE
+            }
         }
     }
+
+    #[cfg(not(all(feature = "global-hotkey", target_os = "macos")))]
+    block_on(async move {
+        match daemon::serve(&path, events).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("verbatim: daemon failed: {err}");
+                ExitCode::FAILURE
+            }
+        }
+    })
 }
 
 #[cfg(unix)]
@@ -102,7 +131,7 @@ fn init_tracing() {
 }
 
 #[cfg(not(unix))]
-async fn run_daemon() -> ExitCode {
+fn run_daemon() -> ExitCode {
     unsupported("the daemon")
 }
 

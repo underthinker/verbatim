@@ -17,10 +17,29 @@ cpal = { version = "0.15", optional = true }
 ringbuf = { version = "0.4", optional = true }
 rubato = { version = "0.15", optional = true }
 
-# Real macOS text injection stack (ARCHITECTURE.md 4.4, spikes 1-2). Only ever
-# compiled on macOS under the `mac-inject` feature; fake-only and non-macOS
-# builds pull none of it.
+# Real global-hotkey registration behind the HotkeyManager trait (Tao/Tauri
+# authors' crate; aligns with the eventual Tauri shell). Gated so fake-only
+# builds and headless CI need no windowing/event-loop stack.
+global-hotkey = { version = "0.6", optional = true }
+
 [target.'cfg(target_os = "macos")'.dependencies]
+# macOS hotkey delivery runs on the main thread's CFRunLoop; the real backend
+# pumps one there. The right-Option push-to-talk trigger is a CGEventTap on
+# flagsChanged (bare modifiers cannot be RegisterEventHotKey chords), added to
+# that same run loop.
+core-foundation = { version = "0.10", optional = true }
+# Shared by the hotkey CGEventTap (phase 5) and the text-injection stack
+# (phase 4, ARCHITECTURE.md 4.4).
+core-graphics = { version = "0.25", optional = true }
+
+# Menu-bar tray presence with a Quit item (ROADMAP M1). Shares the main-thread
+# run loop the hotkey pumps; menu clicks arrive on muda's global channel. From
+# the Tao/Tauri authors, so it aligns with the eventual Tauri shell.
+tray-icon = { version = "0.19", optional = true }
+
+# Real macOS text injection stack (ARCHITECTURE.md 4.4, spikes 1-2) plus the
+# accessory-app promotion the tray needs. Only ever compiled on macOS under the
+# real features; fake-only and non-macOS builds pull none of it.
 objc2 = { version = "0.6", optional = true }
 objc2-foundation = { version = "0.3", optional = true, default-features = false, features = [
     "std",
@@ -29,11 +48,12 @@ objc2-foundation = { version = "0.3", optional = true, default-features = false,
 ] }
 objc2-app-kit = { version = "0.3", optional = true, default-features = false, features = [
     "std",
+    "NSApplication",
+    "NSResponder",
+    "NSRunningApplication",
     "NSPasteboard",
     "NSWorkspace",
-    "NSRunningApplication",
 ] }
-core-graphics = { version = "0.24", optional = true }
 
 [features]
 # Compile the real cpal-backed AudioCapture. Off by default: tests and the
@@ -42,6 +62,17 @@ cpal-audio = ["dep:cpal", "dep:ringbuf", "dep:rubato"]
 # Compile the real macOS injection/focus/clipboard/permission seams. Off by
 # default so headless CI and the fake pipeline never touch AppKit/CoreGraphics.
 mac-inject = ["dep:objc2", "dep:objc2-foundation", "dep:objc2-app-kit", "dep:core-graphics"]
+
+# Compile the real global-hotkey-backed HotkeyManager. Off by default for the
+# same reason: fakes drive tests and headless CI.
+global-hotkey = [
+    "dep:global-hotkey",
+    "dep:core-foundation",
+    "dep:core-graphics",
+    "dep:tray-icon",
+    "dep:objc2",
+    "dep:objc2-app-kit",
+]
 
 [lints]
 workspace = true

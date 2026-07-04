@@ -56,10 +56,165 @@ fn fake_model() -> ModelHandle {
 /// Boot a runner (fakes) and serve the trigger socket at `path` until the
 /// process is killed. Returns the shared event bus so an in-process host (the
 /// tests, later the Tauri shell) can subscribe.
+// Unused in the macOS global-hotkey build, which uses `serve_with_hotkey`, but
+// still the entry for every other platform/feature combination and the tests.
+#[cfg_attr(all(feature = "global-hotkey", target_os = "macos"), allow(dead_code))]
 pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
     let (runner, handle) = SessionRunner::new(build_deps(), RunnerConfig::default(), events);
     tokio::spawn(runner.run());
     serve_with_handle(path, handle).await
+}
+
+/// Boot the daemon with a real global hotkey driving dictation (Phase 5).
+///
+/// The `global-hotkey` crate delivers macOS edges only on the main thread's
+/// run loop (see `verbatim_platform::hotkey`), so this owns the run loop on the
+/// calling thread - which must be the process main thread - and runs the tokio
+/// runtime on background workers. The runner, socket server, and hotkey
+/// semantics task all live on tokio; the main thread does nothing but pump the
+/// run loop and forward edges until the server shuts down on a signal.
+#[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+
+    use verbatim_core::hotkey::{HotkeyMode, HotkeySemantics};
+    use verbatim_platform::hotkey::{GlobalHotkeyBackend, MainThreadHotkey};
+    use verbatim_platform::modifier_tap::{ModifierKey, ModifierTapBackend};
+    use verbatim_platform::{HotkeyBinding, HotkeyCallback, HotkeyManager};
+
+    // The trigger is overridable; the default is the right Option key as
+    // push-to-talk. A bare right-side modifier is driven by a CGEventTap
+    // (`modifier_tap`); any other value is a chord bound via `global-hotkey`.
+    let chord = std::env::var("VERBATIM_HOTKEY").unwrap_or_else(|_| "RightOption".to_owned());
+    let modifier = ModifierKey::parse(&chord);
+    // Modifier keys default to push-to-talk (hold); chords default to toggle.
+    let mode = match std::env::var("VERBATIM_HOTKEY_MODE").as_deref() {
+        Ok("hold") => HotkeyMode::Hold,
+        Ok("toggle") => HotkeyMode::Toggle,
+        _ if modifier.is_some() => HotkeyMode::Hold,
+        _ => HotkeyMode::Toggle,
+    };
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let _guard = runtime.enter();
+
+    // Log every session transition so a manual hotkey test shows the key
+    // driving the state machine live (Idle -> Recording -> ... -> Idle).
+    let mut transitions = events.subscribe();
+    runtime.spawn(async move {
+        use verbatim_core::event::Event;
+        while let Ok(event) = transitions.recv().await {
+            if let Event::SessionTransition { from, to, .. } = event {
+                tracing::info!(?from, ?to, "session transition");
+            }
+        }
+    });
+
+    let (runner, handle) = SessionRunner::new(build_deps(), RunnerConfig::default(), events);
+    runtime.spawn(runner.run());
+
+    // Edges cross from the main-thread run loop into tokio here; the semantics
+    // task turns raw edges into triggers and drives the runner.
+    let (edge_tx, mut edge_rx) = tokio::sync::mpsc::unbounded_channel();
+    {
+        let handle = handle.clone();
+        runtime.spawn(async move {
+            let mut semantics = HotkeySemantics::new(mode);
+            while let Some(event) = edge_rx.recv().await {
+                if let Some(trigger) = semantics.on_event(event, Instant::now())
+                    && handle.trigger(trigger).await.is_err()
+                {
+                    break; // runner gone
+                }
+            }
+        });
+    }
+
+    // The socket server owns signal handling and socket cleanup; when it
+    // returns, it flips the flag so the main-thread pump loop exits too.
+    let shutdown = Arc::new(AtomicBool::new(false));
+    {
+        let shutdown = Arc::clone(&shutdown);
+        let handle = handle.clone();
+        let path = path.to_owned();
+        runtime.spawn(async move {
+            let _ = serve_with_handle(&path, handle).await;
+            shutdown.store(true, Ordering::SeqCst);
+        });
+    }
+
+    // Build the edge callback fresh per branch (it is consumed on registration).
+    let make_callback = || -> HotkeyCallback {
+        let edge_tx = edge_tx.clone();
+        Box::new(move |event| {
+            let _ = edge_tx.send(event);
+        })
+    };
+
+    // Register on this (main) thread; both backends deliver edges through their
+    // run-loop source, which the pump below services. A failure degrades to
+    // CLI-only: a bare, unregistered backend just idles the run loop.
+    let source: Box<dyn MainThreadHotkey> = match modifier {
+        Some(key) => match ModifierTapBackend::new(key, make_callback()) {
+            Ok(backend) => {
+                tracing::info!(%chord, ?mode, "modifier-key push-to-talk registered");
+                Box::new(backend)
+            }
+            Err(err) => {
+                tracing::error!(%chord, ?err, "hotkey registration failed; CLI triggers still work");
+                Box::new(GlobalHotkeyBackend::new())
+            }
+        },
+        None => {
+            let mut backend = GlobalHotkeyBackend::new();
+            match backend.register(
+                &HotkeyBinding {
+                    chord: chord.clone(),
+                },
+                make_callback(),
+            ) {
+                Ok(()) => tracing::info!(%chord, ?mode, "global hotkey registered"),
+                Err(err) => tracing::error!(
+                    %chord, ?err,
+                    "hotkey registration failed; CLI triggers still work"
+                ),
+            }
+            Box::new(backend)
+        }
+    };
+
+    // Menu-bar presence with a Quit item (ROADMAP M1). Best-effort: if the
+    // status item cannot be installed the daemon still runs on the hotkey and
+    // CLI, so a tray failure only logs and drops the menu-bar affordance.
+    let tray = match verbatim_platform::tray::TrayBackend::new() {
+        Ok(tray) => {
+            tracing::info!("menu-bar tray installed");
+            Some(tray)
+        }
+        Err(err) => {
+            tracing::warn!(?err, "tray unavailable; hotkey and CLI still work");
+            None
+        }
+    };
+
+    while !shutdown.load(Ordering::SeqCst) {
+        source.pump(Duration::from_millis(100));
+        // The pump above serviced the run loop, so any Quit click is now queued.
+        if let Some(tray) = &tray
+            && tray.quit_requested()
+        {
+            tracing::info!("quit requested from tray");
+            break;
+        }
+    }
+
+    // On a tray quit the socket server task never ran its own cleanup, so clear
+    // the socket here; a signal-driven shutdown already removed it (ignored).
+    let _ = std::fs::remove_file(path);
+    Ok(())
 }
 
 /// Deps the served daemon runs on: fakes by default, with each real backend

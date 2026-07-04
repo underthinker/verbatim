@@ -8,7 +8,13 @@
 pub mod audio;
 mod errors;
 pub mod fake;
+#[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+pub mod hotkey;
+#[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+pub mod modifier_tap;
 mod traits;
+#[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+pub mod tray;
 mod types;
 
 #[cfg(target_os = "linux")]
