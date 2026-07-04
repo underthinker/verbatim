@@ -45,3 +45,5 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --locked --workspace --all-features
       - run: cargo build --locked --workspace --all-features
+        env:
+          GGML_NO_I8MM: 1

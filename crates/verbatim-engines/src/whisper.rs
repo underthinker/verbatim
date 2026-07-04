@@ -116,28 +116,25 @@ impl TranscriptionEngine for WhisperCppEngine {
             .full(params, &audio.samples)
             .map_err(|err| EngineError::Inference(err.to_string()))?;
 
-        let segment_count = state
-            .full_n_segments()
-            .map_err(|err| EngineError::Inference(err.to_string()))?;
+        let segment_count = state.full_n_segments();
 
         let mut segments = Vec::with_capacity(segment_count.max(0) as usize);
         for index in 0..segment_count {
-            let text = state
-                .full_get_segment_text(index)
+            let segment = state.get_segment(index).ok_or_else(|| {
+                EngineError::Inference("segment out of bounds".to_owned())
+            })?;
+            let text = segment
+                .to_str()
                 .map_err(|err| EngineError::Inference(err.to_string()))?;
-            let t0 = state
-                .full_get_segment_t0(index)
-                .map_err(|err| EngineError::Inference(err.to_string()))?;
-            let t1 = state
-                .full_get_segment_t1(index)
-                .map_err(|err| EngineError::Inference(err.to_string()))?;
+            let t0 = segment.start_timestamp();
+            let t1 = segment.end_timestamp();
 
             segments.push(Segment {
                 text: text.trim().to_owned(),
                 // whisper timestamps are centiseconds from utterance start.
                 t0: t0 as f32 / 100.0,
                 t1: t1 as f32 / 100.0,
-                confidence: segment_confidence(&state, index),
+                confidence: segment_confidence(&segment),
             });
         }
 
@@ -154,16 +151,16 @@ impl TranscriptionEngine for WhisperCppEngine {
 
 /// Mean token probability for a segment, used as a coarse confidence. Falls back
 /// to full confidence when per-token probabilities are unavailable.
-fn segment_confidence(state: &whisper_rs::WhisperState, segment: i32) -> f32 {
-    let token_count = match state.full_n_tokens(segment) {
-        Ok(count) if count > 0 => count,
-        _ => return 1.0,
-    };
+fn segment_confidence(segment: &whisper_rs::WhisperSegment) -> f32 {
+    let token_count = segment.n_tokens();
+    if token_count <= 0 {
+        return 1.0;
+    }
     let mut sum = 0.0f32;
     let mut counted = 0.0f32;
     for token in 0..token_count {
-        if let Ok(prob) = state.full_get_token_prob(segment, token) {
-            sum += prob;
+        if let Some(token) = segment.get_token(token) {
+            sum += token.token_probability();
             counted += 1.0;
         }
     }
