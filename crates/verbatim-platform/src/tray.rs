@@ -39,6 +39,10 @@ impl TrayBackend {
         // safe even though the eventual Tauri shell may set its own policy.
         let app = NSApplication::sharedApplication(mtm);
         app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+        // A CLI process never calls [NSApp run], so finish launching manually:
+        // without it AppKit leaves the app in a pre-launch state where the
+        // status item is drawn but never receives its mouse events.
+        app.finishLaunching();
 
         let quit = MenuItem::new("Quit Verbatim", true, None);
         let quit_id = quit.id().clone();

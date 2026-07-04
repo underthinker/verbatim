@@ -45,10 +45,13 @@ objc2-foundation = { version = "0.3", optional = true, default-features = false,
     "std",
     "NSString",
     "NSData",
+    "NSDate",
+    "NSRunLoop",
 ] }
 objc2-app-kit = { version = "0.3", optional = true, default-features = false, features = [
     "std",
     "NSApplication",
+    "NSEvent",
     "NSResponder",
     "NSRunningApplication",
     "NSPasteboard",
@@ -94,6 +97,7 @@ global-hotkey = [
     "dep:core-graphics",
     "dep:tray-icon",
     "dep:objc2",
+    "dep:objc2-foundation",
     "dep:objc2-app-kit",
 ]
 # Compile the real Linux injection/clipboard/hotkey seams. Off by default so
