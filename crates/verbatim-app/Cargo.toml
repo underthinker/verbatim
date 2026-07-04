@@ -27,6 +27,10 @@ real-audio = ["verbatim-platform/cpal-audio"]
 # Boot the daemon on real whisper.cpp transcription (model path from
 # VERBATIM_WHISPER_MODEL). Injection stays fake until its phase.
 real-transcription = ["verbatim-engines/whisper-cpp"]
+# Boot the daemon on the real macOS injection + focus seams instead of the
+# fakes (macOS only). Clipboard/permission probes ship in the same crate for
+# the shell to call. Tests always run on fakes.
+real-injection = ["verbatim-platform/mac-inject"]
 
 [lints]
 workspace = true
