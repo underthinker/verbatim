@@ -16,8 +16,8 @@ use std::time::Duration;
 
 use core_foundation::runloop::{CFRunLoop, kCFRunLoopCommonModes};
 use core_graphics::event::{
-    CGEventFlags, CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
-    CGEventType, CallbackResult, EventField,
+    CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
+    CallbackResult, EventField,
 };
 
 use crate::errors::HotkeyError;
@@ -59,14 +59,17 @@ impl ModifierKey {
         }
     }
 
-    /// Device-independent flag that is set while this key's family is held.
-    /// Read to tell a press transition from a release on `flagsChanged`.
-    fn flag(self) -> CGEventFlags {
+    /// Device-*specific* modifier bit (`NX_DEVICER*KEYMASK`, carried in the low
+    /// byte of a `flagsChanged` event's flags) that is set while this exact
+    /// right-side key is held. Unlike the device-independent masks
+    /// (`CGEventFlagAlternate`, ...), these distinguish left from right, so a
+    /// left-side key held at the same time never fools the press/release read.
+    fn device_mask(self) -> u64 {
         match self {
-            Self::RightOption => CGEventFlags::CGEventFlagAlternate,
-            Self::RightCommand => CGEventFlags::CGEventFlagCommand,
-            Self::RightControl => CGEventFlags::CGEventFlagControl,
-            Self::RightShift => CGEventFlags::CGEventFlagShift,
+            Self::RightShift => 0x0000_0004,   // NX_DEVICERSHIFTKEYMASK
+            Self::RightCommand => 0x0000_0010, // NX_DEVICERCMDKEYMASK
+            Self::RightOption => 0x0000_0040,  // NX_DEVICERALTKEYMASK
+            Self::RightControl => 0x0000_2000, // NX_DEVICERCTLKEYMASK
         }
     }
 }
@@ -91,7 +94,7 @@ impl ModifierTapBackend {
         request_input_monitoring();
 
         let keycode = key.keycode();
-        let flag = key.flag();
+        let device_mask = key.device_mask();
         let tap = CGEventTap::new(
             CGEventTapLocation::Session,
             CGEventTapPlacement::HeadInsertEventTap,
@@ -99,7 +102,9 @@ impl ModifierTapBackend {
             vec![CGEventType::FlagsChanged],
             move |_proxy, _etype, event| {
                 if event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) == keycode {
-                    let pressed = event.get_flags().contains(flag);
+                    // Device-specific bit: set = this right-side key just went
+                    // down, clear = it went up. Immune to the left twin's state.
+                    let pressed = event.get_flags().bits() & device_mask != 0;
                     on_event(if pressed {
                         HotkeyEvent::Pressed
                     } else {
