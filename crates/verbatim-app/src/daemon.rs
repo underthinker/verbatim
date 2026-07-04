@@ -57,19 +57,53 @@ fn fake_model() -> ModelHandle {
 /// process is killed. Returns the shared event bus so an in-process host (the
 /// tests, later the Tauri shell) can subscribe.
 pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
-    // Phase 2: the real microphone replaces only the capture seam behind the
-    // `real-audio` feature; the rest of the pipeline stays fake for now.
-    #[cfg(feature = "real-audio")]
-    let deps = {
-        let mut deps = fake_deps();
-        deps.audio = Box::new(verbatim_platform::audio::CpalAudioCapture::new());
-        deps
-    };
-    #[cfg(not(feature = "real-audio"))]
-    let deps = fake_deps();
-    let (runner, handle) = SessionRunner::new(deps, RunnerConfig::default(), events);
+    let (runner, handle) = SessionRunner::new(build_deps(), RunnerConfig::default(), events);
     tokio::spawn(runner.run());
     serve_with_handle(path, handle).await
+}
+
+/// Deps the served daemon runs on: fakes by default, with each real backend
+/// swapped in behind its own feature so phases land one seam at a time. Tests
+/// call `fake_deps` directly and are unaffected.
+fn build_deps() -> RunnerDeps {
+    #[allow(unused_mut)]
+    let mut deps = fake_deps();
+    // Phase 2: real microphone.
+    #[cfg(feature = "real-audio")]
+    {
+        deps.audio = Box::new(verbatim_platform::audio::CpalAudioCapture::new());
+    }
+    // Phase 3: real whisper.cpp transcription, if a model is configured.
+    #[cfg(feature = "real-transcription")]
+    {
+        if let Some(engine) = real_transcription() {
+            deps.transcription = engine;
+        }
+    }
+    deps
+}
+
+/// Build and load the whisper.cpp engine from `VERBATIM_WHISPER_MODEL`. A
+/// missing path or a load failure degrades to the fake transcription with a
+/// warning so the daemon still boots during development.
+#[cfg(feature = "real-transcription")]
+fn real_transcription() -> Option<Box<dyn TranscriptionEngine>> {
+    let Some(path) = std::env::var_os("VERBATIM_WHISPER_MODEL").map(std::path::PathBuf::from)
+    else {
+        tracing::warn!("VERBATIM_WHISPER_MODEL not set; keeping fake transcription");
+        return None;
+    };
+    let mut engine = verbatim_engines::WhisperCppEngine::new();
+    match engine.load(&ModelHandle { path }, &EngineOptions::default()) {
+        Ok(()) => Some(Box::new(engine)),
+        Err(err) => {
+            tracing::error!(
+                ?err,
+                "whisper model load failed; keeping fake transcription"
+            );
+            None
+        }
+    }
 }
 
 /// Serve an already-constructed runner. Split out so tests can subscribe to the

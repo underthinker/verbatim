@@ -8,10 +8,20 @@ license.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+tracing.workspace = true
+
+# Real whisper.cpp transcription (ENGINEERING.md 2). Metal is compiled in on
+# macOS for the M1 slice; other targets fall back to the CPU build. Optional so
+# fake-only builds and CI without a C toolchain need none of it.
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16", optional = true, default-features = false, features = ["metal"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+whisper-rs = { version = "0.16", optional = true, default-features = false }
 
 [features]
 # Real engine implementations land during M1 wire-up (ARCHITECTURE.md 4.2/4.3).
-whisper-cpp = []
+whisper-cpp = ["dep:whisper-rs"]
 sherpa-onnx = []
 llama-cpp = []
 

@@ -12,6 +12,8 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-3.0",
+    # whisper-rs / whisper-rs-sys (the whisper.cpp bindings) are public domain.
+    "Unlicense",
 ]
 
 [bans]
