@@ -9,5 +9,6 @@
 
 pub mod error;
 pub mod event;
+pub mod hotkey;
 pub mod runner;
 pub mod session;

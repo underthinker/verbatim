@@ -56,20 +56,114 @@ fn fake_model() -> ModelHandle {
 /// Boot a runner (fakes) and serve the trigger socket at `path` until the
 /// process is killed. Returns the shared event bus so an in-process host (the
 /// tests, later the Tauri shell) can subscribe.
+// Unused in the macOS global-hotkey build, which uses `serve_with_hotkey`, but
+// still the entry for every other platform/feature combination and the tests.
+#[cfg_attr(all(feature = "global-hotkey", target_os = "macos"), allow(dead_code))]
 pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
-    // Phase 2: the real microphone replaces only the capture seam behind the
-    // `real-audio` feature; the rest of the pipeline stays fake for now.
+    let (runner, handle) = SessionRunner::new(build_deps(), RunnerConfig::default(), events);
+    tokio::spawn(runner.run());
+    serve_with_handle(path, handle).await
+}
+
+/// Deps the served daemon runs on. Phase 2: the real microphone replaces only
+/// the capture seam behind the `real-audio` feature; the rest of the pipeline
+/// stays fake until later phases. Tests call `fake_deps` directly.
+fn build_deps() -> RunnerDeps {
     #[cfg(feature = "real-audio")]
-    let deps = {
+    {
         let mut deps = fake_deps();
         deps.audio = Box::new(verbatim_platform::audio::CpalAudioCapture::new());
         deps
-    };
+    }
     #[cfg(not(feature = "real-audio"))]
-    let deps = fake_deps();
-    let (runner, handle) = SessionRunner::new(deps, RunnerConfig::default(), events);
-    tokio::spawn(runner.run());
-    serve_with_handle(path, handle).await
+    {
+        fake_deps()
+    }
+}
+
+/// Boot the daemon with a real global hotkey driving dictation (Phase 5).
+///
+/// The `global-hotkey` crate delivers macOS edges only on the main thread's
+/// run loop (see `verbatim_platform::hotkey`), so this owns the run loop on the
+/// calling thread - which must be the process main thread - and runs the tokio
+/// runtime on background workers. The runner, socket server, and hotkey
+/// semantics task all live on tokio; the main thread does nothing but pump the
+/// run loop and forward edges until the server shuts down on a signal.
+#[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+
+    use verbatim_core::hotkey::{HotkeyMode, HotkeySemantics};
+    use verbatim_platform::hotkey::GlobalHotkeyBackend;
+    use verbatim_platform::{HotkeyBinding, HotkeyManager};
+
+    // Chord and mode are overridable for development; the defaults match a
+    // conservative, unlikely-to-clash chord and a toggle press.
+    let chord =
+        std::env::var("VERBATIM_HOTKEY").unwrap_or_else(|_| "CmdOrCtrl+Shift+Space".to_owned());
+    let mode = match std::env::var("VERBATIM_HOTKEY_MODE").as_deref() {
+        Ok("hold") => HotkeyMode::Hold,
+        _ => HotkeyMode::Toggle,
+    };
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let _guard = runtime.enter();
+
+    let (runner, handle) = SessionRunner::new(build_deps(), RunnerConfig::default(), events);
+    runtime.spawn(runner.run());
+
+    // Edges cross from the main-thread run loop into tokio here; the semantics
+    // task turns raw edges into triggers and drives the runner.
+    let (edge_tx, mut edge_rx) = tokio::sync::mpsc::unbounded_channel();
+    {
+        let handle = handle.clone();
+        runtime.spawn(async move {
+            let mut semantics = HotkeySemantics::new(mode);
+            while let Some(event) = edge_rx.recv().await {
+                if let Some(trigger) = semantics.on_event(event, Instant::now())
+                    && handle.trigger(trigger).await.is_err()
+                {
+                    break; // runner gone
+                }
+            }
+        });
+    }
+
+    // The socket server owns signal handling and socket cleanup; when it
+    // returns, it flips the flag so the main-thread pump loop exits too.
+    let shutdown = Arc::new(AtomicBool::new(false));
+    {
+        let shutdown = Arc::clone(&shutdown);
+        let handle = handle.clone();
+        let path = path.to_owned();
+        runtime.spawn(async move {
+            let _ = serve_with_handle(&path, handle).await;
+            shutdown.store(true, Ordering::SeqCst);
+        });
+    }
+
+    // Register on this (main) thread and pump its run loop until shutdown.
+    let mut backend = GlobalHotkeyBackend::new();
+    match backend.register(
+        &HotkeyBinding {
+            chord: chord.clone(),
+        },
+        Box::new(move |event| {
+            let _ = edge_tx.send(event);
+        }),
+    ) {
+        Ok(()) => tracing::info!(%chord, ?mode, "global hotkey registered"),
+        Err(err) => {
+            tracing::error!(%chord, ?err, "hotkey registration failed; CLI triggers still work")
+        }
+    }
+    while !shutdown.load(Ordering::SeqCst) {
+        backend.pump(Duration::from_millis(100));
+    }
+    Ok(())
 }
 
 /// Serve an already-constructed runner. Split out so tests can subscribe to the

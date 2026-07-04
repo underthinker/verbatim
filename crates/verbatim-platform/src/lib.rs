@@ -8,6 +8,8 @@
 pub mod audio;
 mod errors;
 pub mod fake;
+#[cfg(feature = "global-hotkey")]
+pub mod hotkey;
 mod traits;
 mod types;
 

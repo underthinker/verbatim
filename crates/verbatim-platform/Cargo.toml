@@ -17,10 +17,24 @@ cpal = { version = "0.15", optional = true }
 ringbuf = { version = "0.4", optional = true }
 rubato = { version = "0.15", optional = true }
 
+# Real global-hotkey registration behind the HotkeyManager trait (Tao/Tauri
+# authors' crate; aligns with the eventual Tauri shell). Gated so fake-only
+# builds and headless CI need no windowing/event-loop stack.
+global-hotkey = { version = "0.6", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# macOS delivers global hotkeys through a Carbon handler on a CFRunLoop; the
+# real HotkeyManager pumps one on its own thread.
+core-foundation = { version = "0.10", optional = true }
+
 [features]
 # Compile the real cpal-backed AudioCapture. Off by default: tests and the
 # default daemon run on the deterministic fakes (ENGINEERING.md 4).
 cpal-audio = ["dep:cpal", "dep:ringbuf", "dep:rubato"]
+
+# Compile the real global-hotkey-backed HotkeyManager. Off by default for the
+# same reason: fakes drive tests and headless CI.
+global-hotkey = ["dep:global-hotkey", "dep:core-foundation"]
 
 [lints]
 workspace = true
