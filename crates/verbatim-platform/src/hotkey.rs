@@ -137,9 +137,34 @@ fn classify(message: String, chord: &str) -> HotkeyError {
 /// delivery elsewhere, so we just sleep the interval.
 #[cfg(target_os = "macos")]
 pub(crate) fn pump_event_loop(timeout: Duration) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSEventMask};
+    use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
+
+    // AppKit events (status-item clicks, menu tracking) sit in NSApplication's
+    // event queue and are only delivered through nextEvent/sendEvent - running
+    // the bare CFRunLoop leaves them queued forever, which made the tray icon
+    // ignore clicks. nextEventMatchingMask also runs the CFRunLoop in the given
+    // mode while it waits, so hotkey/tap sources still fire during the pump.
+    if let Some(mtm) = MainThreadMarker::new() {
+        let app = NSApplication::sharedApplication(mtm);
+        let deadline = NSDate::dateWithTimeIntervalSinceNow(timeout.as_secs_f64());
+        while let Some(event) = unsafe {
+            app.nextEventMatchingMask_untilDate_inMode_dequeue(
+                NSEventMask::Any,
+                Some(&deadline),
+                NSDefaultRunLoopMode,
+                true,
+            )
+        } {
+            app.sendEvent(&event);
+        }
+        return;
+    }
+
     use core_foundation::runloop::{CFRunLoop, kCFRunLoopDefaultMode};
 
-    // Return early once a source (the hotkey handler) has been serviced.
+    // Not the main thread (tests): return early once a source has been serviced.
     CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, timeout, true);
 }
 
