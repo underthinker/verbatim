@@ -55,6 +55,29 @@ objc2-app-kit = { version = "0.3", optional = true, default-features = false, fe
     "NSWorkspace",
 ] }
 
+# Real Linux injection/hotkey stack (spike 1): RemoteDesktop portal + libei
+# for consent-ful injection on GNOME/KDE, /dev/uinput as the direct fallback,
+# wl-clipboard for the clipboard discipline, GlobalShortcuts portal for
+# hotkeys. Gated behind `linux-inject`; fake-only builds pull none of it.
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "0.13", default-features = false, features = [
+    "tokio",
+    "remote_desktop",
+    "screencast",
+    "global_shortcuts",
+], optional = true }
+evdev = { version = "0.13", optional = true }
+wl-clipboard-rs = { version = "0.9", optional = true }
+futures-util = { version = "0.3", default-features = false, optional = true }
+# The portal/libei stack is async (zbus); the sync platform traits drive it
+# through a small owned current-thread runtime.
+tokio = { version = "1", default-features = false, features = [
+    "rt",
+    "time",
+    "sync",
+    "macros",
+], optional = true }
+
 [features]
 # Compile the real cpal-backed AudioCapture. Off by default: tests and the
 # default daemon run on the deterministic fakes (ENGINEERING.md 4).
@@ -72,6 +95,15 @@ global-hotkey = [
     "dep:tray-icon",
     "dep:objc2",
     "dep:objc2-app-kit",
+]
+# Compile the real Linux injection/clipboard/hotkey seams. Off by default so
+# headless CI and the fake pipeline never touch the portal/uinput stack.
+linux-inject = [
+    "dep:ashpd",
+    "dep:evdev",
+    "dep:wl-clipboard-rs",
+    "dep:tokio",
+    "dep:futures-util",
 ]
 
 [lints]
