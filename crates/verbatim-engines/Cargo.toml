@@ -19,6 +19,15 @@ whisper-rs = { version = "0.16", optional = true, default-features = false, feat
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 whisper-rs = { version = "0.16", optional = true, default-features = false }
 
+[dev-dependencies]
+# WAV decoding for the latency bench fixture only; never a pipeline dep.
+hound = "3.5"
+
+[[bench]]
+name = "latency"
+harness = false
+required-features = ["whisper-cpp"]
+
 [features]
 # Real engine implementations land during M1 wire-up (ARCHITECTURE.md 4.2/4.3).
 whisper-cpp = ["dep:whisper-rs"]
