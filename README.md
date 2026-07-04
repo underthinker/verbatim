@@ -20,7 +20,7 @@ The design documents below remain the source of truth.
 
 ## Workspace
 
-Cargo workspace (Rust stable, edition 2024, MSRV 1.85 pinned via `rust-toolchain.toml`):
+Cargo workspace (Rust stable, edition 2024, MSRV 1.88 pinned via `rust-toolchain.toml`):
 
 | Crate | Layer | Contents |
 |---|---|---|

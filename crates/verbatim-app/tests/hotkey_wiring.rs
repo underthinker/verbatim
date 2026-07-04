@@ -79,10 +79,10 @@ fn wire_hotkey(
     tokio::spawn(async move {
         let mut semantics = HotkeySemantics::new(mode);
         while let Some(event) = edge_rx.recv().await {
-            if let Some(trigger) = semantics.on_event(event, Instant::now()) {
-                if handle.trigger(trigger).await.is_err() {
-                    break;
-                }
+            if let Some(trigger) = semantics.on_event(event, Instant::now())
+                && handle.trigger(trigger).await.is_err()
+            {
+                break;
             }
         }
     });

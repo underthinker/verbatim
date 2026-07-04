@@ -28,21 +28,40 @@ global-hotkey = { version = "0.6", optional = true }
 # flagsChanged (bare modifiers cannot be RegisterEventHotKey chords), added to
 # that same run loop.
 core-foundation = { version = "0.10", optional = true }
+# Shared by the hotkey CGEventTap (phase 5) and the text-injection stack
+# (phase 4, ARCHITECTURE.md 4.4).
 core-graphics = { version = "0.25", optional = true }
 
 # Menu-bar tray presence with a Quit item (ROADMAP M1). Shares the main-thread
 # run loop the hotkey pumps; menu clicks arrive on muda's global channel. From
 # the Tao/Tauri authors, so it aligns with the eventual Tauri shell.
 tray-icon = { version = "0.19", optional = true }
-# A plain CLI binary must promote itself to an accessory app so the status item
-# appears in the menu bar without also claiming a Dock icon.
+
+# Real macOS text injection stack (ARCHITECTURE.md 4.4, spikes 1-2) plus the
+# accessory-app promotion the tray needs. Only ever compiled on macOS under the
+# real features; fake-only and non-macOS builds pull none of it.
 objc2 = { version = "0.6", optional = true }
-objc2-app-kit = { version = "0.3", optional = true, features = ["NSApplication", "NSResponder", "NSRunningApplication"] }
+objc2-foundation = { version = "0.3", optional = true, default-features = false, features = [
+    "std",
+    "NSString",
+    "NSData",
+] }
+objc2-app-kit = { version = "0.3", optional = true, default-features = false, features = [
+    "std",
+    "NSApplication",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSPasteboard",
+    "NSWorkspace",
+] }
 
 [features]
 # Compile the real cpal-backed AudioCapture. Off by default: tests and the
 # default daemon run on the deterministic fakes (ENGINEERING.md 4).
 cpal-audio = ["dep:cpal", "dep:ringbuf", "dep:rubato"]
+# Compile the real macOS injection/focus/clipboard/permission seams. Off by
+# default so headless CI and the fake pipeline never touch AppKit/CoreGraphics.
+mac-inject = ["dep:objc2", "dep:objc2-foundation", "dep:objc2-app-kit", "dep:core-graphics"]
 
 # Compile the real global-hotkey-backed HotkeyManager. Off by default for the
 # same reason: fakes drive tests and headless CI.

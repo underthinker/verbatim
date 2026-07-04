@@ -65,22 +65,6 @@ pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
     serve_with_handle(path, handle).await
 }
 
-/// Deps the served daemon runs on. Phase 2: the real microphone replaces only
-/// the capture seam behind the `real-audio` feature; the rest of the pipeline
-/// stays fake until later phases. Tests call `fake_deps` directly.
-fn build_deps() -> RunnerDeps {
-    #[cfg(feature = "real-audio")]
-    {
-        let mut deps = fake_deps();
-        deps.audio = Box::new(verbatim_platform::audio::CpalAudioCapture::new());
-        deps
-    }
-    #[cfg(not(feature = "real-audio"))]
-    {
-        fake_deps()
-    }
-}
-
 /// Boot the daemon with a real global hotkey driving dictation (Phase 5).
 ///
 /// The `global-hotkey` crate delivers macOS edges only on the main thread's
@@ -231,6 +215,57 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
     // the socket here; a signal-driven shutdown already removed it (ignored).
     let _ = std::fs::remove_file(path);
     Ok(())
+}
+
+/// Deps the served daemon runs on: fakes by default, with each real backend
+/// swapped in behind its own feature so phases land one seam at a time. Tests
+/// call `fake_deps` directly and are unaffected.
+fn build_deps() -> RunnerDeps {
+    #[allow(unused_mut)]
+    let mut deps = fake_deps();
+    // Phase 2: real microphone.
+    #[cfg(feature = "real-audio")]
+    {
+        deps.audio = Box::new(verbatim_platform::audio::CpalAudioCapture::new());
+    }
+    // Phase 3: real whisper.cpp transcription, if a model is configured.
+    #[cfg(feature = "real-transcription")]
+    {
+        if let Some(engine) = real_transcription() {
+            deps.transcription = engine;
+        }
+    }
+    // Phase 4: real macOS text injection + focus tracking. The injector owns
+    // its own clipboard discipline; both stay behind their probed capabilities.
+    #[cfg(all(feature = "real-injection", target_os = "macos"))]
+    {
+        deps.injector = Box::new(verbatim_platform::macos::MacTextInjector::new());
+        deps.focus = Box::new(verbatim_platform::macos::MacFocusTracker::new());
+    }
+    deps
+}
+
+/// Build and load the whisper.cpp engine from `VERBATIM_WHISPER_MODEL`. A
+/// missing path or a load failure degrades to the fake transcription with a
+/// warning so the daemon still boots during development.
+#[cfg(feature = "real-transcription")]
+fn real_transcription() -> Option<Box<dyn TranscriptionEngine>> {
+    let Some(path) = std::env::var_os("VERBATIM_WHISPER_MODEL").map(std::path::PathBuf::from)
+    else {
+        tracing::warn!("VERBATIM_WHISPER_MODEL not set; keeping fake transcription");
+        return None;
+    };
+    let mut engine = verbatim_engines::WhisperCppEngine::new();
+    match engine.load(&ModelHandle { path }, &EngineOptions::default()) {
+        Ok(()) => Some(Box::new(engine)),
+        Err(err) => {
+            tracing::error!(
+                ?err,
+                "whisper model load failed; keeping fake transcription"
+            );
+            None
+        }
+    }
 }
 
 /// Serve an already-constructed runner. Split out so tests can subscribe to the

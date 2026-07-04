@@ -9,8 +9,12 @@ mod polish;
 mod registry;
 mod transcribe;
 mod types;
+#[cfg(feature = "whisper-cpp")]
+mod whisper;
 
 pub use polish::PolishEngine;
 pub use registry::EngineRegistry;
 pub use transcribe::TranscriptionEngine;
 pub use types::*;
+#[cfg(feature = "whisper-cpp")]
+pub use whisper::WhisperCppEngine;

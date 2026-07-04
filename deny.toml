@@ -22,6 +22,8 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-3.0",
+    # whisper-rs / whisper-rs-sys (the whisper.cpp bindings) are public domain.
+    "Unlicense",
 ]
 # Scoped to individual crates so the global policy stays tight. Both arrive
 # through tray-icon (menu-bar presence). option-ext is weak file-level copyleft
