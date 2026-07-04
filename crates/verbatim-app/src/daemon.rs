@@ -202,9 +202,34 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
         }
     };
 
+    // Menu-bar presence with a Quit item (ROADMAP M1). Best-effort: if the
+    // status item cannot be installed the daemon still runs on the hotkey and
+    // CLI, so a tray failure only logs and drops the menu-bar affordance.
+    let tray = match verbatim_platform::tray::TrayBackend::new() {
+        Ok(tray) => {
+            tracing::info!("menu-bar tray installed");
+            Some(tray)
+        }
+        Err(err) => {
+            tracing::warn!(?err, "tray unavailable; hotkey and CLI still work");
+            None
+        }
+    };
+
     while !shutdown.load(Ordering::SeqCst) {
         source.pump(Duration::from_millis(100));
+        // The pump above serviced the run loop, so any Quit click is now queued.
+        if let Some(tray) = &tray
+            && tray.quit_requested()
+        {
+            tracing::info!("quit requested from tray");
+            break;
+        }
     }
+
+    // On a tray quit the socket server task never ran its own cleanup, so clear
+    // the socket here; a signal-driven shutdown already removed it (ignored).
+    let _ = std::fs::remove_file(path);
     Ok(())
 }
 

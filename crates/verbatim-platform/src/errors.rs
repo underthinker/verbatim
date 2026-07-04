@@ -43,6 +43,12 @@ pub enum HotkeyError {
 }
 
 #[derive(Debug, Error)]
+pub enum TrayError {
+    #[error("tray backend error: {0}")]
+    Backend(String),
+}
+
+#[derive(Debug, Error)]
 pub enum ClipboardError {
     #[error("clipboard unavailable")]
     Unavailable,

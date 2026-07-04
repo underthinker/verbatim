@@ -2,6 +2,16 @@
 
 [graph]
 all-features = true
+# Evaluate the graph per shipped platform (matches the CI matrix) instead of
+# unifying every cfg. This prunes deps that can never build for us - notably the
+# macOS-only tray-icon's cfg(linux) GTK tree, which would otherwise be audited
+# against a Linux it is never compiled for.
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+]
 
 [licenses]
 allow = [
@@ -12,6 +22,30 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-3.0",
+]
+# Scoped to individual crates so the global policy stays tight. Both arrive
+# through tray-icon (menu-bar presence). option-ext is weak file-level copyleft
+# we only link, unmodified; target-lexicon rides tray-icon's Linux GTK build
+# graph and is a permissive Apache variant.
+exceptions = [
+    { allow = ["MPL-2.0"], crate = "option-ext" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "target-lexicon" },
+]
+
+# tray-icon is the Tao/Tauri authors' crate; on Linux it draws in gtk-rs 0.18
+# (GTK3), the same unmaintained-but-standard stack Tauri itself ships. We never
+# compile it on the macOS slice, and the eventual Tauri shell inherits the same
+# tree, so these unmaintained advisories are accepted rather than a blocker.
+[advisories]
+ignore = [
+    "RUSTSEC-2024-0370", # proc-macro-error (via gtk3-macros/glib-macros)
+    "RUSTSEC-2024-0412", # gtk-rs GTK3 bindings unmaintained
+    "RUSTSEC-2024-0413", # gtk-rs GTK3 bindings unmaintained
+    "RUSTSEC-2024-0415", # gtk-rs GTK3 bindings unmaintained
+    "RUSTSEC-2024-0416", # gtk-rs GTK3 bindings unmaintained
+    "RUSTSEC-2024-0418", # gtk-rs GTK3 bindings unmaintained
+    "RUSTSEC-2024-0419", # gtk-rs GTK3 bindings unmaintained
+    "RUSTSEC-2024-0420", # gtk-rs GTK3 bindings unmaintained
 ]
 
 [bans]

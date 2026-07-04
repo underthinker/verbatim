@@ -30,6 +30,15 @@ global-hotkey = { version = "0.6", optional = true }
 core-foundation = { version = "0.10", optional = true }
 core-graphics = { version = "0.25", optional = true }
 
+# Menu-bar tray presence with a Quit item (ROADMAP M1). Shares the main-thread
+# run loop the hotkey pumps; menu clicks arrive on muda's global channel. From
+# the Tao/Tauri authors, so it aligns with the eventual Tauri shell.
+tray-icon = { version = "0.19", optional = true }
+# A plain CLI binary must promote itself to an accessory app so the status item
+# appears in the menu bar without also claiming a Dock icon.
+objc2 = { version = "0.6", optional = true }
+objc2-app-kit = { version = "0.3", optional = true, features = ["NSApplication", "NSResponder", "NSRunningApplication"] }
+
 [features]
 # Compile the real cpal-backed AudioCapture. Off by default: tests and the
 # default daemon run on the deterministic fakes (ENGINEERING.md 4).
@@ -37,7 +46,14 @@ cpal-audio = ["dep:cpal", "dep:ringbuf", "dep:rubato"]
 
 # Compile the real global-hotkey-backed HotkeyManager. Off by default for the
 # same reason: fakes drive tests and headless CI.
-global-hotkey = ["dep:global-hotkey", "dep:core-foundation", "dep:core-graphics"]
+global-hotkey = [
+    "dep:global-hotkey",
+    "dep:core-foundation",
+    "dep:core-graphics",
+    "dep:tray-icon",
+    "dep:objc2",
+    "dep:objc2-app-kit",
+]
 
 [lints]
 workspace = true
