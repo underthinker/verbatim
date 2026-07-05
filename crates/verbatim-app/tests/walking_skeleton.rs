@@ -15,6 +15,7 @@ use verbatim_core::error::ErrorId;
 use verbatim_core::event::{Event, EventBus};
 use verbatim_core::runner::{RunnerConfig, RunnerDeps, RunnerHandle, SessionRunner, Trigger};
 use verbatim_core::session::SessionState;
+use verbatim_engines::PolishRejection;
 use verbatim_engines::fake::{FakePolishBehavior, FakePolishEngine, FakeTranscriptionEngine};
 use verbatim_engines::{
     AudioBuffer, EngineOptions, ModelHandle, PIPELINE_SAMPLE_RATE_HZ, PolishEngine,
@@ -54,18 +55,43 @@ fn loaded_polish() -> FakePolishEngine {
 /// Build a runner over the fakes and start its task, returning the handle, the
 /// shared injector (to read what landed), and a fresh event subscription.
 fn spawn_runner(injector: Arc<FakeTextInjector>) -> (RunnerHandle, broadcast::Receiver<Event>) {
+    spawn_runner_with(injector, RunnerConfig::default(), loaded_polish())
+}
+
+/// Full control over config and polish engine so smoke tests can exercise the
+/// polished branch (raw is the default path above).
+fn spawn_runner_with(
+    injector: Arc<FakeTextInjector>,
+    config: RunnerConfig,
+    polish: FakePolishEngine,
+) -> (RunnerHandle, broadcast::Receiver<Event>) {
     let events = Arc::new(EventBus::default());
     let receiver = events.subscribe();
     let deps = RunnerDeps {
         audio: Box::new(FakeAudioCapture::new(one_second_fixture())),
         transcription: Box::new(loaded_asr("hello from verbatim")),
-        polish: Box::new(loaded_polish()),
+        polish: Box::new(polish),
         injector: Box::new(injector),
         focus: Box::new(FakeFocusTracker::default()),
     };
-    let (runner, handle) = SessionRunner::new(deps, RunnerConfig::default(), events);
+    let (runner, handle) = SessionRunner::new(deps, config, events);
     tokio::spawn(runner.run());
     (handle, receiver)
+}
+
+fn polished_config() -> RunnerConfig {
+    RunnerConfig {
+        polish: true,
+        ..RunnerConfig::default()
+    }
+}
+
+fn loaded_polish_with(behavior: FakePolishBehavior) -> FakePolishEngine {
+    let mut engine = FakePolishEngine::new(behavior);
+    engine
+        .load(&fake_model(), &EngineOptions::default())
+        .unwrap();
+    engine
 }
 
 fn drain(receiver: &mut broadcast::Receiver<Event>) -> Vec<Event> {
@@ -160,4 +186,88 @@ async fn cancel_discards_recording() {
     handle.trigger(Trigger::Cancel).await.unwrap();
     assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
     assert!(injector.injected_texts().is_empty());
+}
+
+#[tokio::test]
+async fn polished_mode_injects_polished_text() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let (handle, mut events) = spawn_runner_with(
+        injector.clone(),
+        polished_config(),
+        loaded_polish_with(FakePolishBehavior::Fixed("polished output".to_owned())),
+    );
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+    assert_eq!(
+        injector.injected_texts(),
+        vec!["polished output".to_owned()],
+        "polished text, not raw, must land"
+    );
+    assert_eq!(
+        transition_targets(&drain(&mut events)),
+        vec![
+            SessionState::Arming,
+            SessionState::Recording,
+            SessionState::Finalizing,
+            SessionState::Transcribing,
+            SessionState::Polishing,
+            SessionState::Injecting,
+            SessionState::Idle,
+        ]
+    );
+}
+
+#[tokio::test]
+async fn polish_rejection_degrades_to_raw_never_blocks() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let (handle, mut events) = spawn_runner_with(
+        injector.clone(),
+        polished_config(),
+        loaded_polish_with(FakePolishBehavior::Reject(PolishRejection::DeadlineMissed)),
+    );
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+    assert_eq!(
+        injector.injected_texts(),
+        vec!["hello from verbatim".to_owned()],
+        "rejected polish falls back to raw; the session never dead-ends"
+    );
+    // Passed through Polishing, then degraded straight to Injecting.
+    assert_eq!(
+        transition_targets(&drain(&mut events)),
+        vec![
+            SessionState::Arming,
+            SessionState::Recording,
+            SessionState::Finalizing,
+            SessionState::Transcribing,
+            SessionState::Polishing,
+            SessionState::Injecting,
+            SessionState::Idle,
+        ]
+    );
+}
+
+#[tokio::test]
+async fn toggle_drives_a_full_start_stop_cycle() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let (handle, _events) = spawn_runner(injector.clone());
+
+    handle.trigger(Trigger::Toggle).await.unwrap();
+    assert_eq!(
+        handle.status().await.unwrap().state,
+        SessionState::Recording
+    );
+
+    handle.trigger(Trigger::Toggle).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+    assert_eq!(
+        injector.injected_texts(),
+        vec!["hello from verbatim".to_owned()]
+    );
 }

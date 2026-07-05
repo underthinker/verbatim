@@ -25,7 +25,7 @@ Acceptance criteria (open items tracked in the [M1 - Walking skeleton milestone]
 - [ ] Dictation lands text in a foreign app on all platforms, including GNOME Wayland (portal or uinput) and KDE.
 - [ ] Injection failure is detected honestly (no silent success) and falls back to clipboard.
 - [ ] p50 raw latency < 800 ms for a 10 s utterance on Apple Silicon and the reference Windows laptop (resident model). (2026-07-04: raw-latency bench harness + per-runner regression gate landed in CI on `main` - PRs #11/#13/#14. CI runs on virtualised runners only, which cannot meet the 800 ms budget by design; the real-hardware measurement on Apple Silicon and the reference Windows laptop is still outstanding - tracked in #16.)
-- [ ] State machine has exhaustive unit tests; E2E smoke test green on all platforms.
+- [x] State machine has exhaustive unit tests; E2E smoke test green on all platforms. (2026-07-04: #20 - `session.rs` exhaustive transition table + terminal-Failed tests; `walking_skeleton.rs` E2E smoke (happy/injection-fail/cancel/polished/polish-degrades-to-raw/toggle) runs via `cargo test --workspace` on macos-latest, macos-15-intel, windows-latest, ubuntu-24.04.)
 
 ## M2 - UX shell
 
