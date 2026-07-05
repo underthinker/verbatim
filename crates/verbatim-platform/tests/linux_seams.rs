@@ -32,6 +32,28 @@ fn injector_probe_always_offers_a_last_resort() {
 }
 
 #[test]
+fn injector_probe_keeps_the_clipboard_surrender_last() {
+    // The point of #18 is that text lands *in the app*: any event-capable
+    // backend (portal, uinput) must be tried before the clipboard-only
+    // surrender, so we never fall back to a manual paste while a real backend
+    // could still deliver. Whatever the session offers, ClipboardOnly is last.
+    let backends = LinuxTextInjector::new().probe();
+    assert_eq!(
+        backends.last(),
+        Some(&verbatim_platform::InjectionBackend::ClipboardOnly),
+        "clipboard-only must be the last resort, got {backends:?}"
+    );
+    let clipboard_positions = backends
+        .iter()
+        .filter(|b| matches!(b, verbatim_platform::InjectionBackend::ClipboardOnly))
+        .count();
+    assert_eq!(
+        clipboard_positions, 1,
+        "clipboard-only must appear exactly once, got {backends:?}"
+    );
+}
+
+#[test]
 fn permission_probe_answers_every_capability_without_prompting() {
     let probe = LinuxPermissionProbe::new();
     // Each probe must return a defined state and, critically, must not block

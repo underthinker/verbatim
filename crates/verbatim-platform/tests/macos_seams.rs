@@ -30,6 +30,28 @@ fn injector_probe_always_offers_a_last_resort() {
 }
 
 #[test]
+fn injector_probe_keeps_the_clipboard_surrender_last() {
+    // The point of #18 is that text lands *in the app*: when AX is trusted the
+    // paste/typing backends precede the clipboard-only surrender, and even
+    // without trust the clipboard is the single, last fallback - never tried
+    // ahead of a backend that could actually deliver.
+    let backends = MacTextInjector::new().probe();
+    assert_eq!(
+        backends.last(),
+        Some(&verbatim_platform::InjectionBackend::ClipboardOnly),
+        "clipboard-only must be the last resort, got {backends:?}"
+    );
+    let clipboard_positions = backends
+        .iter()
+        .filter(|b| matches!(b, verbatim_platform::InjectionBackend::ClipboardOnly))
+        .count();
+    assert_eq!(
+        clipboard_positions, 1,
+        "clipboard-only must appear exactly once, got {backends:?}"
+    );
+}
+
+#[test]
 fn permission_probe_answers_every_capability_without_prompting() {
     let probe = MacPermissionProbe::new();
     // Each probe must return a defined state and, critically, must not block or
