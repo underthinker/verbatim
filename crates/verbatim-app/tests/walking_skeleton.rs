@@ -21,7 +21,9 @@ use verbatim_engines::{
     AudioBuffer, EngineOptions, ModelHandle, PIPELINE_SAMPLE_RATE_HZ, PolishEngine,
     TranscriptionEngine,
 };
-use verbatim_platform::fake::{FakeAudioCapture, FakeFocusTracker, FakeTextInjector};
+use verbatim_platform::fake::{
+    FakeAudioCapture, FakeFocusTracker, FakeInjectionOutcome, FakeTextInjector,
+};
 
 fn one_second_fixture() -> AudioBuffer {
     AudioBuffer {
@@ -144,10 +146,12 @@ async fn hotkey_to_injected_text_happy_path() {
     );
 }
 
+/// Total failure: not even the clipboard fallback could stage the text. The
+/// failure must surface (E4), never a silent success.
 #[tokio::test]
 async fn injection_failure_is_detected_honestly() {
     let injector = Arc::new(FakeTextInjector::default());
-    injector.set_failing(true);
+    injector.set_outcome(FakeInjectionOutcome::HardFailure);
     let (handle, mut events) = spawn_runner(injector.clone());
 
     handle.trigger(Trigger::Start).await.unwrap();
@@ -169,7 +173,78 @@ async fn injection_failure_is_detected_honestly() {
             }
         )
     });
-    assert!(raised, "the E4 clipboard-fallback error must be published");
+    assert!(raised, "the E4 error must be published");
+}
+
+/// A blocked primary backend (Windows UIPI against an elevated window, a
+/// Wayland portal denial) falls back to the clipboard: the text is staged for
+/// the user to paste, not silently lost, and E4 is surfaced honestly.
+#[tokio::test]
+async fn injection_falls_back_to_clipboard_on_backend_block() {
+    let injector = Arc::new(FakeTextInjector::default());
+    injector.set_outcome(FakeInjectionOutcome::ClipboardFallback);
+    let (handle, mut events) = spawn_runner(injector.clone());
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+
+    assert_eq!(
+        handle.status().await.unwrap().state,
+        SessionState::Failed(ErrorId::E4),
+        "unverified delivery must surface E4, never a silent success"
+    );
+    // Nothing was verifiably typed, but the text survived on the clipboard.
+    assert!(injector.injected_texts().is_empty());
+    assert_eq!(
+        injector.clipboard_texts(),
+        vec!["hello from verbatim".to_owned()],
+        "the fallback must leave the text on the clipboard, not lose it"
+    );
+
+    let raised = drain(&mut events).into_iter().any(|event| {
+        matches!(
+            event,
+            Event::ErrorRaised {
+                id: ErrorId::E4,
+                ..
+            }
+        )
+    });
+    assert!(raised, "the E4 clipboard-fallback notice must be published");
+}
+
+/// A secure input field (password box) focused at injection time: injection is
+/// refused (E5) and the text is staged nowhere - never leaked to the clipboard.
+#[tokio::test]
+async fn secure_field_refuses_injection_and_reports_e5() {
+    let injector = Arc::new(FakeTextInjector::default());
+    injector.set_outcome(FakeInjectionOutcome::SecureField);
+    let (handle, mut events) = spawn_runner(injector.clone());
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+
+    assert_eq!(
+        handle.status().await.unwrap().state,
+        SessionState::Failed(ErrorId::E5),
+        "a secure field must refuse injection honestly"
+    );
+    assert!(injector.injected_texts().is_empty());
+    assert!(
+        injector.clipboard_texts().is_empty(),
+        "a secure context must not leak the text onto the clipboard"
+    );
+
+    let raised = drain(&mut events).into_iter().any(|event| {
+        matches!(
+            event,
+            Event::ErrorRaised {
+                id: ErrorId::E5,
+                ..
+            }
+        )
+    });
+    assert!(raised, "the E5 secure-field error must be published");
 }
 
 #[tokio::test]
