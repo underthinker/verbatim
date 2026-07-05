@@ -26,6 +26,8 @@ The cross-crate E2E smoke (`crates/verbatim-app/tests/walking_skeleton.rs`) addi
 
 These are the "verified end-to-end (real keypress -> text in target)" bullet. Run each on a real desktop session and record the result in the issue.
 
+Run `scripts/verify-injection.sh` (macOS/Linux) or `pwsh scripts/verify-injection.ps1` (Windows) to execute the host platform's seam E2E and print its checklist in one command - see [scripts/README.md](../scripts/README.md).
+
 For every platform: open a plain text editor, put the caret in it, keep it focused, trigger dictation, speak a known phrase, and confirm the exact text appears **in the editor** (not just on the clipboard).
 
 ### macOS
