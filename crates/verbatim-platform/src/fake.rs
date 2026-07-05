@@ -105,24 +105,67 @@ impl AudioCapture for FakeAudioCapture {
     }
 }
 
-/// A `TextInjector` that records what it injected; can be told to fail.
+/// What a `FakeTextInjector` does with every `inject`, mirroring the honest
+/// receipt contract every real platform injector obeys (ARCHITECTURE.md 4.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FakeInjectionOutcome {
+    /// Delivered and verified into the target app (typed or pasted).
+    #[default]
+    Verified,
+    /// The active backends could not deliver (e.g. Windows UIPI block against
+    /// an elevated window, or a Wayland portal denial), so the text was staged
+    /// on the clipboard for the user to paste: `verified = false`, the E4 path.
+    ClipboardFallback,
+    /// A secure input field is focused; injection is refused and nothing is
+    /// staged anywhere (E5).
+    SecureField,
+    /// Total failure: not even the clipboard fallback could stage the text.
+    /// The extreme last case (clipboard write itself failed).
+    HardFailure,
+}
+
+/// A `TextInjector` that records what it delivered; its outcome is scriptable so
+/// tests can drive every honest-failure branch.
 #[derive(Default)]
 pub struct FakeTextInjector {
     injected: Mutex<Vec<(String, FocusedApp)>>,
-    fail: AtomicBool,
+    clipboard_staged: Mutex<Vec<String>>,
+    outcome: Mutex<FakeInjectionOutcome>,
 }
 
 impl FakeTextInjector {
-    /// Make every subsequent `inject` fail (E4 path).
-    pub fn set_failing(&self, failing: bool) {
-        self.fail.store(failing, Ordering::SeqCst);
+    /// Force a specific injection outcome for every subsequent `inject`.
+    pub fn set_outcome(&self, outcome: FakeInjectionOutcome) {
+        if let Ok(mut current) = self.outcome.lock() {
+            *current = outcome;
+        }
     }
 
-    /// Texts injected so far, in order.
+    /// Back-compat shim: `true` is a total failure, `false` restores verified
+    /// delivery. Prefer [`set_outcome`](Self::set_outcome) for the clipboard
+    /// fallback and secure-field paths.
+    pub fn set_failing(&self, failing: bool) {
+        self.set_outcome(if failing {
+            FakeInjectionOutcome::HardFailure
+        } else {
+            FakeInjectionOutcome::Verified
+        });
+    }
+
+    /// Texts verifiably injected so far, in order.
     pub fn injected_texts(&self) -> Vec<String> {
         self.injected
             .lock()
             .map(|entries| entries.iter().map(|(text, _)| text.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Texts staged on the clipboard by the fallback path, in order. Proves the
+    /// text survived a failed primary injection (was not silently lost).
+    pub fn clipboard_texts(&self) -> Vec<String> {
+        self.clipboard_staged
+            .lock()
+            .map(|v| v.clone())
             .unwrap_or_default()
     }
 }
@@ -141,20 +184,41 @@ impl TextInjector for FakeTextInjector {
         target: &FocusedApp,
         _strategy: InjectionStrategy,
     ) -> Result<InjectionReceipt, InjectError> {
-        if self.fail.load(Ordering::SeqCst) {
-            return Err(InjectError::AllBackendsFailed);
-        }
-        self.injected
+        let outcome = self
+            .outcome
             .lock()
-            .map_err(|_| InjectError::Backend {
-                backend: InjectionBackend::ClipboardAssistedPaste,
-                reason: "fake injector mutex poisoned".to_owned(),
-            })?
-            .push((text.to_owned(), target.clone()));
-        Ok(InjectionReceipt {
-            backend: InjectionBackend::ClipboardAssistedPaste,
-            verified: true,
-        })
+            .map(|o| *o)
+            .unwrap_or(FakeInjectionOutcome::Verified);
+        match outcome {
+            FakeInjectionOutcome::Verified => {
+                self.injected
+                    .lock()
+                    .map_err(|_| InjectError::Backend {
+                        backend: InjectionBackend::ClipboardAssistedPaste,
+                        reason: "fake injector mutex poisoned".to_owned(),
+                    })?
+                    .push((text.to_owned(), target.clone()));
+                Ok(InjectionReceipt {
+                    backend: InjectionBackend::ClipboardAssistedPaste,
+                    verified: true,
+                })
+            }
+            FakeInjectionOutcome::ClipboardFallback => {
+                self.clipboard_staged
+                    .lock()
+                    .map_err(|_| InjectError::Backend {
+                        backend: InjectionBackend::ClipboardOnly,
+                        reason: "fake injector mutex poisoned".to_owned(),
+                    })?
+                    .push(text.to_owned());
+                Ok(InjectionReceipt {
+                    backend: InjectionBackend::ClipboardOnly,
+                    verified: false,
+                })
+            }
+            FakeInjectionOutcome::SecureField => Err(InjectError::SecureInput),
+            FakeInjectionOutcome::HardFailure => Err(InjectError::AllBackendsFailed),
+        }
     }
 }
 
