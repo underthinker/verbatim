@@ -14,6 +14,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
+use tauri::{AppHandle, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use verbatim_core::error::ErrorId;
 use verbatim_core::event::{Event, EventBus};
@@ -46,20 +47,55 @@ pub fn step_for_error(id: ErrorId) -> Option<OnboardingStep> {
     }
 }
 
+/// Parse the webview's capability string into the platform enum. Unknown
+/// strings return `None` so a command rejects them rather than guessing.
+pub fn parse_capability(name: &str) -> Option<Capability> {
+    match name {
+        "microphone" => Some(Capability::Microphone),
+        "textInjection" => Some(Capability::TextInjection),
+        "inputMonitoring" => Some(Capability::InputMonitoring),
+        _ => None,
+    }
+}
+
+/// Tauri window label for the onboarding webview.
+pub const WINDOW_LABEL: &str = "onboarding";
+
+/// Build and show the onboarding window - a normal focusable window (unlike the
+/// non-activating overlay), loading the onboarding webview surface (UX.md 6).
+pub fn create_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("onboarding.html".into()))
+        .title("Welcome to Verbatim")
+        .inner_size(560.0, 640.0)
+        .resizable(false)
+        .center()
+        .build()
+}
+
+/// Detect the hardware feeding the model recommendation (UX.md 6 step 4).
+// TODO(m2): replace the conservative default with real RAM/GPU probing; a
+// safe mid-tier default keeps onboarding functional until then.
+pub fn detect_hardware() -> HardwareProfile {
+    HardwareProfile {
+        total_ram_gib: 8,
+        has_gpu: false,
+    }
+}
+
 /// Serde view of a catalog model for the webview (size shown per UX.md 6 step 4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
     pub id: String,
     pub name: String,
-    pub kind: ModelKind2,
+    pub kind: ModelKindDto,
     pub size_bytes: u64,
 }
 
 /// Serde mirror of `ModelKind` (engines stays serde-free).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum ModelKind2 {
+pub enum ModelKindDto {
     Transcription,
     Polish,
 }
@@ -70,8 +106,8 @@ impl From<&ModelSpec> for ModelInfo {
             id: spec.id.to_owned(),
             name: spec.name.to_owned(),
             kind: match spec.kind {
-                ModelKind::Transcription => ModelKind2::Transcription,
-                ModelKind::Polish => ModelKind2::Polish,
+                ModelKind::Transcription => ModelKindDto::Transcription,
+                ModelKind::Polish => ModelKindDto::Polish,
             },
             size_bytes: spec.size_bytes,
         }
