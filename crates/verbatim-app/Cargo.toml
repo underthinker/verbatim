@@ -10,8 +10,14 @@ license.workspace = true
 name = "verbatim"
 path = "src/main.rs"
 
+[build-dependencies]
+tauri-build.workspace = true
+
 [dependencies]
 clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util", "time", "signal"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -20,6 +26,10 @@ verbatim-engines.workspace = true
 verbatim-platform.workspace = true
 
 [features]
+# Serve the webview from the embedded `ui/dist` assets instead of the Vite dev
+# server. The Tauri CLI enables this automatically on `tauri build`; a plain
+# debug `cargo run -- gui` loads the dev server URL (tauri.conf.json devUrl).
+custom-protocol = ["tauri/custom-protocol"]
 # Boot the daemon on the real cpal microphone instead of the fake fixture.
 # Transcription/injection stay fake until their phases land, so this only
 # swaps the capture seam. Tests always run on fakes.

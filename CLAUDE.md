@@ -27,7 +27,10 @@ Cargo workspace, Rust stable, edition 2024, MSRV 1.88 (`rust-toolchain.toml`).
 | `verbatim-core` | Core | session state machine, event bus, error taxonomy, `SessionRunner` actor |
 | `verbatim-platform` | Platform | hotkey/audio/injection/clipboard/permission/focus/autostart traits, deterministic fakes, per-OS backends |
 | `verbatim-engines` | Engine | transcription + polish traits, engine registry, fakes |
-| `verbatim-app` | App | `verbatim` binary (`daemon`/`trigger`/`status` CLI; Tauri shell lands in M2) |
+| `verbatim-app` | App | `verbatim` binary (`daemon`/`trigger`/`status`/`gui` CLI), Tauri 2 shell (`gui.rs`), webview event bridge (`bridge.rs`), `tauri.conf.json` |
+
+Frontend lives in `ui/` (Vite + React + TS, pnpm): the webview surfaces.
+It subscribes to the bridged event bus (`ui/src/events.ts` mirrors `bridge.rs`); no business logic in TS.
 
 ## Build & test
 
@@ -38,6 +41,9 @@ cargo fmt
 cargo clippy --all-targets -- -D warnings
 cargo deny check          # licenses + advisories
 ```
+
+Frontend (from `ui/`): `pnpm install`, `pnpm build` (typecheck + bundle), `pnpm lint`.
+Debug `verbatim gui` loads the Vite dev server (`pnpm dev`, port 1420); release bundles embed `ui/dist` via `ui/node_modules/.bin/tauri build` run from the repo root.
 
 Feature flags gate real backends behind traits: `cpal-audio` (mic capture), `real-injection`
 (+ `win-inject` on Windows). Default build uses deterministic fakes so tests stay OS-free.

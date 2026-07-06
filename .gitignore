@@ -9,9 +9,14 @@
 # Rust (future)
 target/
 
-# Node (future)
+# Node
 node_modules/
 dist/
+# The Tauri context embeds ui/dist at compile time; keep the directory present
+# so a Rust-only `cargo build` works before the frontend has been built.
+!ui/dist/
+ui/dist/*
+!ui/dist/.gitkeep
 
 # Models and audio samples are never committed
 *.gguf
@@ -27,6 +32,9 @@ spikes/**/out/
 
 # Tooling caches
 .impeccable/
+
+# Tauri build-time codegen
+crates/verbatim-app/gen/
 
 # Keep the benchmark speech fixture tracked despite the *.wav rule above.
 !benches/fixtures/jfk.wav

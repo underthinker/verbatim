@@ -14,8 +14,10 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
+mod bridge;
 mod client;
 mod daemon;
+mod gui;
 mod ipc;
 mod transport;
 
@@ -35,6 +37,9 @@ enum Command {
     /// Run the background instance: owns the session runner and the trigger
     /// socket. This is the default when no subcommand is given.
     Daemon,
+    /// Run the Tauri shell: the daemon plus the desktop window (M2). CLI
+    /// triggers keep working against it over the same socket.
+    Gui,
     /// Control a running Verbatim instance (how native shortcut bindings
     /// drive dictation on GNOME, and how scripts integrate).
     Trigger {
@@ -58,6 +63,11 @@ fn main() -> ExitCode {
         // The daemon may need to own the main thread's run loop (macOS global
         // hotkey), so it manages its own runtime rather than running under one.
         Command::Daemon => run_daemon(),
+        // The webview event loop must own the process main thread.
+        Command::Gui => {
+            init_tracing();
+            gui::run()
+        }
         Command::Trigger { verb } => block_on(run_trigger(verb)),
         Command::Status => block_on(run_status()),
     }

@@ -329,7 +329,7 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
 /// Deps the served daemon runs on: fakes by default, with each real backend
 /// swapped in behind its own feature so phases land one seam at a time. Tests
 /// call `fake_deps` directly and are unaffected.
-fn build_deps() -> RunnerDeps {
+pub fn build_deps() -> RunnerDeps {
     #[allow(unused_mut)]
     let mut deps = fake_deps();
     // Phase 2: real microphone.
