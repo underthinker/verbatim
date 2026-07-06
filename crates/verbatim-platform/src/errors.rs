@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::types::InjectionBackend;
+use crate::types::{Capability, InjectionBackend};
 
 #[derive(Debug, Error)]
 pub enum CaptureError {
@@ -65,5 +65,15 @@ pub enum FocusError {
 #[derive(Debug, Error)]
 pub enum AutostartError {
     #[error("autostart backend error: {0}")]
+    Backend(String),
+}
+
+#[derive(Debug, Error)]
+pub enum PermissionRequestError {
+    /// The capability cannot be actively requested on this platform (e.g.
+    /// `TextInjection` on Windows, which needs no permission).
+    #[error("capability {0:?} cannot be requested on this platform")]
+    Unsupported(Capability),
+    #[error("permission backend error: {0}")]
     Backend(String),
 }
