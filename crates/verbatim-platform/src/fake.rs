@@ -8,10 +8,11 @@ use verbatim_engines::AudioBuffer;
 
 use crate::errors::{
     AutostartError, CaptureError, ClipboardError, FocusError, HotkeyError, InjectError,
+    PermissionRequestError,
 };
 use crate::traits::{
     AudioCapture, Autostart, ClipboardGuard, FocusTracker, HotkeyCallback, HotkeyManager,
-    PermissionProbe, TextInjector,
+    PermissionProbe, PermissionRequest, TextInjector,
 };
 use crate::types::{
     Capability, ClipboardSnapshot, FocusedApp, HotkeyBinding, HotkeyEvent, InjectionBackend,
@@ -326,6 +327,74 @@ impl PermissionProbe for FakePermissionProbe {
                     .map(|(_, state)| *state)
             })
             .unwrap_or(PermissionState::Granted)
+    }
+}
+
+/// One recorded call against a `FakePermissionRequester`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionRequestCall {
+    Request(Capability),
+    OpenSettings(Capability),
+}
+
+/// A `PermissionRequest` that records every call and, on `request`, reflects
+/// the outcome into a shared `FakePermissionProbe` - simulating the user
+/// answering the OS prompt so the onboarding re-check loop (UX.md 6) runs end
+/// to end without any OS UI. `open_settings` only records (the user grants out
+/// of band; a test then flips the probe).
+pub struct FakePermissionRequester {
+    probe: Arc<FakePermissionProbe>,
+    resolves_to: PermissionState,
+    unsupported: Vec<Capability>,
+    calls: Mutex<Vec<PermissionRequestCall>>,
+}
+
+impl FakePermissionRequester {
+    /// Grant-on-request against `probe` (the common happy path).
+    pub fn new(probe: Arc<FakePermissionProbe>) -> Self {
+        Self {
+            probe,
+            resolves_to: PermissionState::Granted,
+            unsupported: Vec::new(),
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Script the state a `request` resolves the capability to (e.g. `Denied`
+    /// to exercise the E1/E9 re-entry path).
+    pub fn resolving_to(mut self, state: PermissionState) -> Self {
+        self.resolves_to = state;
+        self
+    }
+
+    /// Capabilities that reject `request` as unsupported (e.g. Windows typing).
+    pub fn unsupported(mut self, capabilities: Vec<Capability>) -> Self {
+        self.unsupported = capabilities;
+        self
+    }
+
+    pub fn calls(&self) -> Vec<PermissionRequestCall> {
+        self.calls.lock().map(|c| c.clone()).unwrap_or_default()
+    }
+}
+
+impl PermissionRequest for FakePermissionRequester {
+    fn request(&self, capability: Capability) -> Result<(), PermissionRequestError> {
+        if self.unsupported.contains(&capability) {
+            return Err(PermissionRequestError::Unsupported(capability));
+        }
+        if let Ok(mut calls) = self.calls.lock() {
+            calls.push(PermissionRequestCall::Request(capability));
+        }
+        self.probe.set(capability, self.resolves_to);
+        Ok(())
+    }
+
+    fn open_settings(&self, capability: Capability) -> Result<(), PermissionRequestError> {
+        if let Ok(mut calls) = self.calls.lock() {
+            calls.push(PermissionRequestCall::OpenSettings(capability));
+        }
+        Ok(())
     }
 }
 

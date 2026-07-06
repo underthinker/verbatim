@@ -3,11 +3,62 @@
 
 use std::time::Duration;
 
+use crate::model::{DownloadError, ModelDownloader, ModelSpec, ProgressSink};
 use crate::types::{
     AudioBuffer, EngineError, EngineId, EngineOptions, LanguageTag, ModelHandle, PolishOutcome,
     PolishProfile, PolishRejection, Segment, TranscribeOptions, Transcript,
 };
 use crate::{PolishEngine, TranscriptionEngine};
+
+/// A deterministic `ModelDownloader`: emits a fixed number of progress ticks up
+/// to the model's size, then yields a fake on-disk handle - no network, no disk.
+/// Onboarding drives this so the download step is testable (UX.md 6 step 4);
+/// `fail_after_tick` exercises the interrupted-download path (E8).
+pub struct FakeModelDownloader {
+    ticks: u64,
+    fail_after_tick: Option<u64>,
+}
+
+impl Default for FakeModelDownloader {
+    fn default() -> Self {
+        Self {
+            ticks: 4,
+            fail_after_tick: None,
+        }
+    }
+}
+
+impl FakeModelDownloader {
+    /// Fail partway through, after emitting `tick` progress callbacks (E8).
+    pub fn failing_after(tick: u64) -> Self {
+        Self {
+            ticks: 4,
+            fail_after_tick: Some(tick),
+        }
+    }
+}
+
+impl ModelDownloader for FakeModelDownloader {
+    fn download(
+        &self,
+        spec: &ModelSpec,
+        progress: &ProgressSink,
+    ) -> Result<ModelHandle, DownloadError> {
+        let total = spec.size_bytes;
+        for tick in 1..=self.ticks {
+            if self.fail_after_tick == Some(tick - 1) {
+                return Err(DownloadError::Transport(
+                    "simulated interruption".to_owned(),
+                ));
+            }
+            let received = (total * tick) / self.ticks;
+            progress(received, total);
+        }
+        Ok(ModelHandle {
+            path: format!("/fake/models/{}.bin", spec.id).into(),
+        })
+    }
+}
 
 /// A `TranscriptionEngine` that returns a fixed transcript.
 pub struct FakeTranscriptionEngine {

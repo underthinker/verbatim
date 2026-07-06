@@ -5,6 +5,7 @@
 //! and land during M1 wire-up; see ARCHITECTURE.md sections 4.2 and 4.3.
 
 pub mod fake;
+pub mod model;
 mod polish;
 mod registry;
 mod transcribe;
