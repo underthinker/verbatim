@@ -31,6 +31,11 @@ required-features = ["whisper-cpp"]
 [features]
 # Real engine implementations land during M1 wire-up (ARCHITECTURE.md 4.2/4.3).
 whisper-cpp = ["dep:whisper-rs"]
+# Vulkan GPU backend for non-macOS targets (macOS uses Metal, compiled in above).
+# Vendor-neutral GPU acceleration for the Windows/Linux reference-hardware
+# latency criterion; requires the Vulkan SDK (VULKAN_SDK env var) at build time.
+# GPU is tried first with CPU fallback (see WhisperCppEngine::load).
+whisper-vulkan = ["whisper-cpp", "whisper-rs/vulkan"]
 sherpa-onnx = []
 llama-cpp = []
 
