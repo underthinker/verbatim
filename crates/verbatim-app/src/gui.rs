@@ -21,7 +21,7 @@ use verbatim_core::event::EventBus;
 use verbatim_core::runner::{RunnerConfig, RunnerHandle, SessionRunner};
 
 use crate::bridge::{self, SessionStateDto, UiEvent};
-use crate::{daemon, ipc};
+use crate::{daemon, ipc, overlay};
 
 struct Shell {
     handle: RunnerHandle,
@@ -104,6 +104,10 @@ pub fn run() -> ExitCode {
         .invoke_handler(tauri::generate_handler![trigger, session_state])
         .setup(move |app| {
             spawn_event_bridge(app.handle().clone(), &events);
+            // Overlay (Phase B): created hidden so ARMING can show it within
+            // the < 50 ms budget; driven straight from the Rust bus.
+            overlay::create_window(app.handle())?;
+            overlay::spawn_driver(app.handle().clone(), &events);
             Ok(())
         })
         .run(tauri::generate_context!());

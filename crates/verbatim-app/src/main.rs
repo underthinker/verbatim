@@ -1,12 +1,8 @@
 //! The `verbatim` binary: CLI entry with headless parity from M1
-//! (ARCHITECTURE.md 6). The Tauri shell joins in a later M1 phase.
-//!
-//! Security (ENGINEERING.md 8): the trigger IPC accepts trigger verbs only,
-//! never text payloads; other processes must never be able to inject text
-//! through us. The wire protocol enforces this - see `ipc.rs`.
+//! (ARCHITECTURE.md 6); all components live in the `verbatim_app` library.
 //!
 //! The transport is a Unix domain socket on Unix and a named pipe on Windows
-//! (`transport.rs`); the wire protocol is byte-identical on both.
+//! (`transport`); the wire protocol is byte-identical on both.
 
 #![forbid(unsafe_code)]
 
@@ -14,12 +10,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-mod bridge;
-mod client;
-mod daemon;
-mod gui;
-mod ipc;
-mod transport;
+use verbatim_app::{client, daemon, gui, ipc};
 
 #[derive(Parser)]
 #[command(
