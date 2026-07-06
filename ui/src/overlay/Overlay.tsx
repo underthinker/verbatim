@@ -9,7 +9,13 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-import { OVERLAY_EVENT, type OverlayEvent, type OverlayPhase } from "./events";
+import {
+  OVERLAY_EVENT,
+  type ErrorPresentation,
+  type OverlayEvent,
+  type OverlayPhase,
+  type PrimaryAction,
+} from "./events";
 
 /** Bars in the live waveform / static meter. */
 const WAVEFORM_BARS = 24;
@@ -22,6 +28,19 @@ const PHASE_LABEL: Record<OverlayPhase, string> = {
   success: "done",
   nothingHeard: "didn't catch anything",
   error: "something went wrong",
+};
+
+/** Button label per primary action - mirrors `PrimaryAction::label`
+ * (crates/verbatim-app/src/error_catalog.rs). */
+const ACTION_LABEL: Record<PrimaryAction["kind"], string> = {
+  openMicPermission: "Open microphone settings",
+  openModelManager: "Download model",
+  retryTranscription: "Retry",
+  pasteHint: "Paste anyway",
+  openInputDevicePicker: "Choose microphone",
+  resumeDownload: "Resume download",
+  setUpTyping: "Set up typing",
+  openPolishSettings: "Polish settings",
 };
 
 function usePrefersReducedMotion(): boolean {
@@ -144,7 +163,7 @@ function PhaseIcon({ phase }: { phase: OverlayPhase }) {
 
 export default function Overlay() {
   const [phase, setPhase] = useState<OverlayPhase>("arming");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorPresentation | null>(null);
   const [levels, setLevels] = useState<number[]>(() =>
     Array<number>(WAVEFORM_BARS).fill(0),
   );
@@ -172,10 +191,10 @@ export default function Overlay() {
   }, []);
 
   const showWaveform = phase === "recording" || phase === "finalizing";
-  const label =
-    phase === "error" && error !== null
-      ? `${PHASE_LABEL.error} (${error})`
-      : PHASE_LABEL[phase];
+  // In the error phase the pill speaks the catalog's plain copy (UX.md 4), not
+  // a raw code; the primary action is offered as an explicit affordance.
+  const isError = phase === "error" && error !== null;
+  const label = isError ? error.copy : PHASE_LABEL[phase];
 
   return (
     <div
@@ -192,6 +211,9 @@ export default function Overlay() {
         />
       ) : (
         <span className="label">{label}</span>
+      )}
+      {isError && error.action !== null && (
+        <span className="action">{ACTION_LABEL[error.action.kind]}</span>
       )}
     </div>
   );
