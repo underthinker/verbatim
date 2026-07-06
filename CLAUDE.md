@@ -2,7 +2,7 @@
 
 Cross-platform, privacy-first, fully local dictation app.
 Press a hotkey, speak, get polished text injected into any app, with zero cloud dependency.
-Status: early implementation, milestone M1 (walking skeleton).
+Status: M1 walking skeleton wrapping up (a few desktop/permission-bound injection checks remain); M2 UX shell in progress (overlay, E1-E10 error catalog, and first-run onboarding landed - see `plans/m2-ux-shell.md`).
 
 ## Model selection
 
