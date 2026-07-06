@@ -23,6 +23,8 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindo
 use verbatim_core::event::{Event, EventBus};
 use verbatim_core::session::SessionState;
 
+use crate::error_catalog::{self, ErrorPresentation};
+
 /// Tauri window label for the overlay.
 pub const WINDOW_LABEL: &str = "overlay";
 
@@ -76,8 +78,10 @@ pub enum OverlayPhase {
 pub enum OverlayEvent {
     Phase {
         phase: OverlayPhase,
-        /// UX error catalog ID (E1-E10); set only when `phase` is `Error`.
-        error: Option<String>,
+        /// The full error catalog response (copy + primary action); set only
+        /// when `phase` is `Error` (UX.md 4). The webview renders copy and the
+        /// action label from this - it never maps error IDs itself.
+        error: Option<ErrorPresentation>,
     },
     Level {
         rms: f32,
@@ -90,7 +94,7 @@ pub enum Directive {
     /// Present `phase` and make sure the window is visible.
     Show {
         phase: OverlayPhase,
-        error: Option<String>,
+        error: Option<ErrorPresentation>,
     },
     /// Present `phase`, then hide after `linger` unless superseded.
     Flash {
@@ -137,7 +141,7 @@ pub fn directive(from: SessionState, to: SessionState) -> Option<Directive> {
         (S::Arming | S::Recording, S::Idle) => Some(Directive::Hide),
         (_, S::Failed(id)) => Some(Directive::Show {
             phase: OverlayPhase::Error,
-            error: Some(format!("{id:?}")),
+            error: Some(error_catalog::present(id)),
         }),
         _ => None,
     }
@@ -229,7 +233,7 @@ fn apply(app: &AppHandle, generation: &Arc<AtomicU64>, directive: Directive) {
         return;
     };
 
-    let present = |phase: OverlayPhase, error: Option<String>| {
+    let present = |phase: OverlayPhase, error: Option<ErrorPresentation>| {
         if let Err(err) = app.emit_to(
             WINDOW_LABEL,
             EVENT_CHANNEL,
@@ -331,14 +335,18 @@ mod tests {
     }
 
     #[test]
-    fn failures_carry_the_catalog_id() {
-        assert_eq!(
-            directive(SessionState::Recording, SessionState::Failed(ErrorId::E6)),
+    fn failures_carry_the_catalog_presentation() {
+        match directive(SessionState::Recording, SessionState::Failed(ErrorId::E6)) {
             Some(Directive::Show {
                 phase: OverlayPhase::Error,
-                error: Some("E6".to_owned()),
-            })
-        );
+                error: Some(presentation),
+            }) => {
+                assert_eq!(presentation, error_catalog::present(ErrorId::E6));
+                assert_eq!(presentation.id, "E6");
+                assert!(presentation.action.is_some(), "E6 needs a primary action");
+            }
+            other => panic!("expected an error presentation, got {other:?}"),
+        }
     }
 
     #[test]

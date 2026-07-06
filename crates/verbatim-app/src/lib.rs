@@ -13,6 +13,7 @@
 pub mod bridge;
 pub mod client;
 pub mod daemon;
+pub mod error_catalog;
 pub mod gui;
 pub mod ipc;
 pub mod overlay;
