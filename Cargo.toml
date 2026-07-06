@@ -12,7 +12,8 @@ license = "MIT"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri = { version = "2", default-features = true }
+# macos-private-api: transparent overlay webview background (no-op elsewhere).
+tauri = { version = "2", default-features = true, features = ["macos-private-api"] }
 tauri-build = { version = "2", default-features = true }
 tokio = { version = "1", default-features = false, features = ["sync"] }
 clap = { version = "4", features = ["derive"] }

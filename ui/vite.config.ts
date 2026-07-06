@@ -6,6 +6,15 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      // Two webview surfaces: the main window and the overlay pill.
+      input: {
+        main: "index.html",
+        overlay: "overlay.html",
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,

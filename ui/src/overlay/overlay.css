@@ -1,0 +1,180 @@
+/* Overlay pill (UX.md 7): transparent window background, auto dark/light,
+ * reduced-motion aware. The pill never receives pointer or keyboard input -
+ * the window is click-through and non-activating on the native side. */
+
+:root {
+  color-scheme: light dark;
+  --pill-bg: rgba(28, 28, 30, 0.92);
+  --pill-fg: rgba(255, 255, 255, 0.95);
+  --pill-muted: rgba(255, 255, 255, 0.55);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --pill-bg: rgba(245, 245, 247, 0.95);
+    --pill-fg: rgba(20, 20, 22, 0.95);
+    --pill-muted: rgba(20, 20, 22, 0.5);
+  }
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+#root {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 300px;
+  height: 56px;
+  padding: 0 20px;
+  border-radius: 28px;
+  background: var(--pill-bg);
+  color: var(--pill-fg);
+  font:
+    500 14px/1 system-ui,
+    sans-serif;
+  animation: pill-in 160ms ease-out;
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: currentColor;
+}
+
+.label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ARMING: "starting" shimmer. */
+.phase-arming .label {
+  animation: shimmer 1.1s ease-in-out infinite;
+}
+
+/* RECORDING: live waveform. */
+.waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+  flex: 1;
+}
+
+.waveform .bar {
+  flex: 1;
+  height: 100%;
+  border-radius: 1.5px;
+  background: currentColor;
+  transform-origin: center;
+  transition: transform 70ms linear;
+}
+
+/* FINALIZING: waveform freezes, sweep runs across it. */
+.waveform.frozen {
+  position: relative;
+  overflow: hidden;
+}
+
+.waveform.frozen .bar {
+  transition: none;
+  opacity: 0.6;
+}
+
+.waveform.frozen::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 30%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--pill-muted),
+    transparent
+  );
+  animation: sweep 280ms ease-out;
+}
+
+/* TRANSCRIBING / POLISHING: indeterminate spinner. */
+.spinner {
+  animation: spin 900ms linear infinite;
+}
+
+/* INJECTING success: tick shown, pill fades (200 ms per UX.md 2). */
+.phase-success {
+  animation: fade-out 200ms ease-in 220ms forwards;
+}
+
+/* Static level meter replaces the waveform under reduced motion (UX.md 8). */
+.meter {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: currentColor;
+}
+
+/* Reduced motion: no entrance, no shimmer, no sweep, no fades (UX.md 8). */
+.reduced-motion,
+.reduced-motion .label,
+.reduced-motion .spinner,
+.reduced-motion.phase-success {
+  animation: none;
+}
+
+@keyframes pill-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes shimmer {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}

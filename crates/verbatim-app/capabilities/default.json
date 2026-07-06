@@ -1,0 +1,7 @@
+{
+  "$schema": "./schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Core runtime access for the shell webviews: the event bridge (listen) and the closed trigger/status command surface. No plugin or filesystem permissions.",
+  "windows": ["main", "overlay"],
+  "permissions": ["core:default"]
+}
