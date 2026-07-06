@@ -2,6 +2,7 @@ use verbatim_engines::AudioBuffer;
 
 use crate::errors::{
     AutostartError, CaptureError, ClipboardError, FocusError, HotkeyError, InjectError,
+    PermissionRequestError,
 };
 use crate::types::{
     Capability, ClipboardSnapshot, FocusedApp, HotkeyBinding, HotkeyEvent, InjectionBackend,
@@ -74,6 +75,22 @@ pub trait ClipboardGuard: Send + Sync {
 /// (ARCHITECTURE.md 4.6, spike 2 preflight APIs).
 pub trait PermissionProbe: Send + Sync {
     fn probe(&self, capability: Capability) -> PermissionState;
+}
+
+/// User-initiated permission requests (ARCHITECTURE.md 4.6; UX.md 6 onboarding
+/// steps 2-3). Distinct from the read-only `PermissionProbe`: these surface OS
+/// UI and are only ever called from an explicit user action. The re-check after
+/// the OS UI closes is done by polling `PermissionProbe`, so these return once
+/// the request is dispatched, not when the user decides.
+pub trait PermissionRequest: Send + Sync {
+    /// Trigger the OS permission prompt where the platform offers one
+    /// (microphone). Capabilities without a direct prompt (macOS Accessibility,
+    /// Linux typing) fall back to opening their settings pane.
+    fn request(&self, capability: Capability) -> Result<(), PermissionRequestError>;
+
+    /// Open the OS settings pane for `capability` so the user can grant it -
+    /// the deep link for the onboarding re-check loop and the E1/E9 re-entry.
+    fn open_settings(&self, capability: Capability) -> Result<(), PermissionRequestError>;
 }
 
 /// Frontmost-app tracking for the focus rule (E7) and per-app profiles.

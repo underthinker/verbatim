@@ -12,9 +12,11 @@
 
 pub mod bridge;
 pub mod client;
+pub mod config;
 pub mod daemon;
 pub mod error_catalog;
 pub mod gui;
 pub mod ipc;
+pub mod onboarding;
 pub mod overlay;
 pub mod transport;

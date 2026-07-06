@@ -11,9 +11,11 @@
     "macOSPrivateApi": true,
     "windows": [
       {
+        "label": "main",
         "title": "Verbatim",
         "width": 520,
-        "height": 400
+        "height": 400,
+        "visible": false
       }
     ],
     "security": {
