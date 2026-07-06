@@ -4,6 +4,15 @@ Cross-platform, privacy-first, fully local dictation app.
 Press a hotkey, speak, get polished text injected into any app, with zero cloud dependency.
 Status: early implementation, milestone M1 (walking skeleton).
 
+## Model selection
+
+Suggest a model and effort level at the start of each task, for cost efficiency. Two-tier only (do not use Sonnet):
+
+- **Haiku 4.5** - mechanical, bounded work: renames, typo fixes, formatting, single-file edits, status/CI checks, PR babysitting.
+- **Opus 4.8** - anything with design judgment: cross-crate work, debugging, security-sensitive code, feature implementation.
+
+Pick effort (low/med/high) based on ambiguity and blast radius.
+
 ## Source of truth
 
 Design docs in `docs/` are authoritative. Read them before making design decisions.
