@@ -13,6 +13,10 @@ Suggest a model and effort level at the start of each task, for cost efficiency.
 
 Pick effort (low/med/high) based on ambiguity and blast radius.
 
+### Ship flow delegation
+
+Once the code work for a phase/branch is done, delegate the **entire ship tail to Haiku**: push branch, open the PR, babysit CI until green, merge (squash + delete branch). Opus does not push/PR/merge itself. If CI fails on something other than known-flaky `latency bench (macos-latest)`, Haiku stops and reports back for Opus to fix.
+
 ## Source of truth
 
 Design docs in `docs/` are authoritative. Read them before making design decisions.
