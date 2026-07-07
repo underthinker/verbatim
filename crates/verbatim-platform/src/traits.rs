@@ -98,6 +98,24 @@ pub trait FocusTracker: Send + Sync {
     fn focused_app(&self) -> Result<FocusedApp, FocusError>;
 }
 
+/// Screen-reader awareness for the overlay (UX.md 8). Lets the overlay driver
+/// announce transient states through the OS accessibility notification API and
+/// know when assistive tech is active so auto-dismiss timeouts are extended.
+///
+/// The overlay window is click-through and never focused, so its webview
+/// `aria-live` region is not in any screen reader's monitored tree; the OS-level
+/// announcement here is the only path that reaches VoiceOver / Narrator / Orca.
+pub trait AccessibilityAnnouncer: Send + Sync {
+    /// Whether a screen reader is currently running. Drives the default-on
+    /// announcement behavior and the extended auto-dismiss timeouts.
+    fn screen_reader_active(&self) -> bool;
+
+    /// Post `message` as a transient announcement (spoken without moving focus).
+    /// Best-effort: an announcement failure must never interrupt dictation, so
+    /// this returns nothing and swallows OS errors after logging them.
+    fn announce(&self, message: &str);
+}
+
 /// Launch-at-login management.
 pub trait Autostart: Send + Sync {
     fn is_enabled(&self) -> Result<bool, AutostartError>;

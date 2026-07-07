@@ -20,7 +20,7 @@ use tauri::{Emitter, Manager};
 use verbatim_core::event::{Event, EventBus};
 use verbatim_core::runner::{RunnerConfig, RunnerHandle, SessionRunner};
 use verbatim_engines::fake::FakeModelDownloader;
-use verbatim_platform::fake::{FakePermissionProbe, FakePermissionRequester};
+use verbatim_platform::fake::{FakeAnnouncer, FakePermissionProbe, FakePermissionRequester};
 
 use crate::bridge::{self, SessionStateDto, UiEvent};
 use crate::config::OnboardingState;
@@ -391,7 +391,14 @@ pub fn run() -> ExitCode {
             // Overlay (Phase B): created hidden so ARMING can show it within
             // the < 50 ms budget; driven straight from the Rust bus.
             overlay::create_window(app.handle())?;
-            overlay::spawn_driver(app.handle().clone(), &events);
+            // ponytail: fake announcer (no screen reader) until the per-OS
+            // AccessibilityAnnouncer backends land - control plane (SR-aware
+            // timeouts + announcements) is wired and tested against the fake.
+            overlay::spawn_driver(
+                app.handle().clone(),
+                &events,
+                Arc::new(FakeAnnouncer::default()),
+            );
             // Cross-platform tray (Phase E-4): a direct bus consumer like the
             // overlay; menu actions drive the same runner/config/history.
             tray::create(app.handle(), tray_handle, tray_history)?;
