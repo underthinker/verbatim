@@ -1,0 +1,17 @@
+# whisper-rs-sys and llama-cpp-sys-2 each statically vendor their own copy of
+# ggml/gguf. With both engine features active (real-transcription + llama-cpp)
+# the workspace link step sees duplicate ggml symbols. macOS ld64 dedups them
+# and links fine; Linux (rust-lld) and Windows (MSVC link.exe) hard-error.
+#
+# Both crates track compatible ggml, so keeping the first definition is safe in
+# practice. The linker picks one ggml impl for both consumers.
+#
+# ponytail: known ceiling - link order decides which vendored ggml wins. If
+# whisper-rs and llama-cpp-2 ever drift to ABI-incompatible ggml, the loser
+# crate could misbehave at runtime. Upgrade path: pin a single shared ggml
+# (system lib or a common -sys crate) instead of two vendored copies.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-Wl,--allow-multiple-definition"]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/FORCE:MULTIPLE"]
