@@ -31,6 +31,16 @@ pub enum Event {
         session: Option<SessionId>,
         id: ErrorId,
     },
+    /// A dictation was delivered (verified injection). The app-layer history
+    /// store persists these; core itself is path-free (ARCHITECTURE.md 4.8).
+    /// `polished` is the injected polished text when polish ran, else `None`
+    /// (raw-only, or polish degraded to raw).
+    DictationRecorded {
+        session: SessionId,
+        app_id: String,
+        raw: String,
+        polished: Option<String>,
+    },
 }
 
 pub struct EventBus {

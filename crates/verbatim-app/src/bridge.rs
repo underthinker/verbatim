@@ -66,6 +66,12 @@ pub enum UiEvent {
         session: Option<u64>,
         id: String,
     },
+    DictationRecorded {
+        session: u64,
+        app_id: String,
+        raw: String,
+        polished: Option<String>,
+    },
 }
 
 impl From<Event> for UiEvent {
@@ -93,6 +99,17 @@ impl From<Event> for UiEvent {
             Event::ErrorRaised { session, id } => UiEvent::ErrorRaised {
                 session: session.map(|s| s.0),
                 id: format!("{id:?}"),
+            },
+            Event::DictationRecorded {
+                session,
+                app_id,
+                raw,
+                polished,
+            } => UiEvent::DictationRecorded {
+                session: session.0,
+                app_id,
+                raw,
+                polished,
             },
         }
     }

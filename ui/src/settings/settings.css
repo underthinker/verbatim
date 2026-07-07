@@ -170,3 +170,131 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Model manager (Models tab) */
+.models {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.models__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.models__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--card);
+  border-radius: 8px;
+}
+
+.models__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.models__sub {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.models__badge {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.models__progress {
+  width: 200px;
+  height: 6px;
+  margin-top: 4px;
+}
+
+.models__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.models__actions button {
+  padding: 6px 12px;
+  border: 1px solid var(--track);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.models__delete {
+  color: var(--err);
+  border-color: var(--err) !important;
+}
+
+/* History list (History tab) */
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.history__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history__row {
+  padding: 10px 12px;
+  background: var(--card);
+  border-radius: 8px;
+}
+
+.history__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.history__meta button {
+  padding: 4px 10px;
+  border: 1px solid var(--track);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.history__raw {
+  margin: 0;
+}
+
+.history__polished {
+  margin: 4px 0 0;
+  color: var(--muted);
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+}

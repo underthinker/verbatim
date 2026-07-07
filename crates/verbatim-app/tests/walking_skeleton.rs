@@ -133,8 +133,9 @@ async fn hotkey_to_injected_text_happy_path() {
         vec!["hello from verbatim".to_owned()],
         "receipts must be honest: the text actually landed"
     );
+    let drained = drain(&mut events);
     assert_eq!(
-        transition_targets(&drain(&mut events)),
+        transition_targets(&drained),
         vec![
             SessionState::Arming,
             SessionState::Recording,
@@ -144,6 +145,15 @@ async fn hotkey_to_injected_text_happy_path() {
             SessionState::Idle,
         ]
     );
+    // Verified delivery records history: raw text, no polish on this path.
+    let recorded = drained
+        .iter()
+        .find_map(|event| match event {
+            Event::DictationRecorded { raw, polished, .. } => Some((raw.clone(), polished.clone())),
+            _ => None,
+        })
+        .expect("a DictationRecorded event must be published on verified injection");
+    assert_eq!(recorded, ("hello from verbatim".to_owned(), None));
 }
 
 /// Total failure: not even the clipboard fallback could stage the text. The
@@ -164,7 +174,8 @@ async fn injection_failure_is_detected_honestly() {
     );
     assert!(injector.injected_texts().is_empty());
 
-    let raised = drain(&mut events).into_iter().any(|event| {
+    let drained = drain(&mut events);
+    let raised = drained.iter().any(|event| {
         matches!(
             event,
             Event::ErrorRaised {
@@ -174,6 +185,13 @@ async fn injection_failure_is_detected_honestly() {
         )
     });
     assert!(raised, "the E4 error must be published");
+    // A failed delivery is not history: no DictationRecorded on this path.
+    assert!(
+        !drained
+            .iter()
+            .any(|event| matches!(event, Event::DictationRecorded { .. })),
+        "failed injection must not be recorded"
+    );
 }
 
 /// A blocked primary backend (Windows UIPI against an elevated window, a
@@ -281,8 +299,9 @@ async fn polished_mode_injects_polished_text() {
         vec!["polished output".to_owned()],
         "polished text, not raw, must land"
     );
+    let drained = drain(&mut events);
     assert_eq!(
-        transition_targets(&drain(&mut events)),
+        transition_targets(&drained),
         vec![
             SessionState::Arming,
             SessionState::Recording,
@@ -293,6 +312,16 @@ async fn polished_mode_injects_polished_text() {
             SessionState::Idle,
         ]
     );
+    // History records both raw and the polished text that actually landed.
+    let recorded = drained
+        .iter()
+        .find_map(|event| match event {
+            Event::DictationRecorded { raw, polished, .. } => Some((raw.clone(), polished.clone())),
+            _ => None,
+        })
+        .expect("DictationRecorded must be published");
+    assert_eq!(recorded.1.as_deref(), Some("polished output"));
+    assert!(!recorded.0.is_empty(), "raw text must be recorded too");
 }
 
 #[tokio::test]

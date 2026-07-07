@@ -4,8 +4,10 @@
 import { useEffect, useState } from "react";
 
 import { Config, getConfig, setConfig, validateHotkey } from "./commands";
+import HistoryList from "./HistoryList";
+import ModelsTab from "./ModelsTab";
 
-const TABS = ["General", "Dictation", "Polish", "History", "About"] as const;
+const TABS = ["General", "Dictation", "Polish", "Models", "History", "About"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function Settings() {
@@ -111,7 +113,7 @@ export default function Settings() {
               <span>Transcription model</span>
               <strong>{config.transcription_model ?? "None selected"}</strong>
             </p>
-            <p className="settings__hint">Manage models in the Model Manager.</p>
+            <p className="settings__hint">Manage models in the Models tab.</p>
           </>
         )}
 
@@ -132,21 +134,26 @@ export default function Settings() {
           </>
         )}
 
+        {tab === "Models" && <ModelsTab />}
+
         {tab === "History" && (
-          <label className="settings__field" htmlFor="retention">
-            <span>Keep dictation history for</span>
-            <select
-              id="retention"
-              value={config.history_retention_days}
-              onChange={(e) => patch({ history_retention_days: Number(e.target.value) })}
-            >
-              <option value={0}>Off (store nothing)</option>
-              <option value={1}>1 day</option>
-              <option value={7}>7 days</option>
-              <option value={30}>30 days</option>
-              <option value={365}>1 year</option>
-            </select>
-          </label>
+          <>
+            <label className="settings__field" htmlFor="retention">
+              <span>Keep dictation history for</span>
+              <select
+                id="retention"
+                value={config.history_retention_days}
+                onChange={(e) => patch({ history_retention_days: Number(e.target.value) })}
+              >
+                <option value={0}>Off (store nothing)</option>
+                <option value={1}>1 day</option>
+                <option value={7}>7 days</option>
+                <option value={30}>30 days</option>
+                <option value={365}>1 year</option>
+              </select>
+            </label>
+            <HistoryList />
+          </>
         )}
 
         {tab === "About" && (

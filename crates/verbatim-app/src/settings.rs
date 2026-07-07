@@ -241,7 +241,7 @@ fn platform_config_dir() -> PathBuf {
     std::env::temp_dir().join("verbatim")
 }
 
-fn load_from(dir: &Path) -> Config {
+pub(crate) fn load_from(dir: &Path) -> Config {
     let path = dir.join(CONFIG_FILE);
     match std::fs::read_to_string(&path) {
         Ok(text) => toml::from_str(&text).unwrap_or_default(),
@@ -249,7 +249,7 @@ fn load_from(dir: &Path) -> Config {
     }
 }
 
-fn save_to(dir: &Path, config: &Config) -> std::io::Result<()> {
+pub(crate) fn save_to(dir: &Path, config: &Config) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
     let text = toml::to_string_pretty(config)
         .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;

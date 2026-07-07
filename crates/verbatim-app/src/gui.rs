@@ -17,16 +17,21 @@ use std::sync::Arc;
 
 use tauri::{Emitter, Manager};
 
-use verbatim_core::event::EventBus;
+use verbatim_core::event::{Event, EventBus};
 use verbatim_core::runner::{RunnerConfig, RunnerHandle, SessionRunner};
 use verbatim_engines::fake::FakeModelDownloader;
 use verbatim_platform::fake::{FakePermissionProbe, FakePermissionRequester};
 
 use crate::bridge::{self, SessionStateDto, UiEvent};
 use crate::config::OnboardingState;
+use crate::history::{History, HistoryEntry};
+use crate::models::{ManagedModel, ModelManager};
 use crate::onboarding::{self, ModelInfo, Onboarding};
 use crate::settings::Config;
-use crate::{daemon, ipc, overlay};
+use crate::{config, daemon, ipc, overlay};
+
+/// How many history rows the window lists (UX.md 7 reverse-chron pairs).
+const HISTORY_LIMIT: u32 = 200;
 
 struct Shell {
     handle: RunnerHandle,
@@ -150,6 +155,56 @@ fn settings_validate_hotkey(chord: String) -> Result<(), String> {
     Config::validate_hotkey(&chord).map_err(|err| err.to_string())
 }
 
+/// The catalog with each model's installed state, size, and default flag.
+#[tauri::command]
+fn models_list(state: tauri::State<'_, ModelManager>) -> Vec<ManagedModel> {
+    state.list()
+}
+
+/// Total bytes used by installed model files (disk-usage readout, UX.md 7).
+#[tauri::command]
+fn models_disk_usage(state: tauri::State<'_, ModelManager>) -> u64 {
+    state.disk_usage()
+}
+
+/// Download a model, streaming `DownloadProgress` on the event bridge; returns
+/// the resolved on-disk path. An interruption surfaces as an error for the UI
+/// to offer a resumable retry (E8).
+#[tauri::command]
+fn models_download(
+    state: tauri::State<'_, ModelManager>,
+    model_id: String,
+) -> Result<String, String> {
+    state.download(&model_id).map_err(|err| err.to_string())
+}
+
+/// Delete an installed model; clears the default for its kind if it was set.
+#[tauri::command]
+fn models_delete(state: tauri::State<'_, ModelManager>, model_id: String) -> Result<(), String> {
+    state.delete(&model_id).map_err(|err| err.to_string())
+}
+
+/// Set the default model for its kind (must be installed), persisted to config.
+#[tauri::command]
+fn models_set_default(
+    state: tauri::State<'_, ModelManager>,
+    model_id: String,
+) -> Result<(), String> {
+    state.set_default(&model_id).map_err(|err| err.to_string())
+}
+
+/// Recent dictation history, newest first (History surface, UX.md 7).
+#[tauri::command]
+fn history_list(state: tauri::State<'_, Arc<History>>) -> Result<Vec<HistoryEntry>, String> {
+    state.list(HISTORY_LIMIT).map_err(|err| err.to_string())
+}
+
+/// Clear all history (single delete + VACUUM).
+#[tauri::command]
+fn history_clear(state: tauri::State<'_, Arc<History>>) -> Result<(), String> {
+    state.clear().map_err(|err| err.to_string())
+}
+
 /// Trigger dictation from the webview. The verb set is the same closed set
 /// the IPC socket accepts (`ipc::Request::parse`); anything else is rejected
 /// before interpretation, mirroring the wire-protocol posture.
@@ -200,6 +255,59 @@ fn spawn_event_bridge(app: tauri::AppHandle, events: &EventBus) {
     });
 }
 
+/// Open the on-disk history DB, degrading to an in-memory store if the data dir
+/// or DB file cannot be opened - history is never allowed to block startup.
+fn open_history() -> History {
+    let dir = config::data_dir();
+    let opened = std::fs::create_dir_all(&dir)
+        .map_err(|err| tracing::warn!(?err, "history data dir create failed"))
+        .ok()
+        .and_then(|()| {
+            History::open(&dir.join("history.db"))
+                .map_err(|err| tracing::error!(?err, "history db open failed"))
+                .ok()
+        });
+    match opened {
+        Some(history) => history,
+        None => {
+            tracing::warn!("history running in-memory this session");
+            // Startup path: an in-memory SQLite open cannot realistically fail;
+            // expect is permitted here per the coding standard (startup only).
+            #[allow(clippy::expect_used)]
+            History::open_in_memory().expect("in-memory history")
+        }
+    }
+}
+
+/// Subscribe to the bus and persist every `DictationRecorded` to history, using
+/// the live retention setting (retention `0` = off, written as a no-op).
+fn spawn_history_recorder(history: Arc<History>, events: &EventBus) {
+    let mut receiver = events.subscribe();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            match receiver.recv().await {
+                Ok(Event::DictationRecorded {
+                    app_id,
+                    raw,
+                    polished,
+                    ..
+                }) => {
+                    let retention = Config::load().history_retention_days;
+                    if let Err(err) = history.record(&app_id, &raw, polished.as_deref(), retention)
+                    {
+                        tracing::warn!(?err, "history record failed");
+                    }
+                }
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(missed)) => {
+                    tracing::warn!(missed, "history recorder lagged");
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+}
+
 /// Run the shell on the calling thread, which must be the process main thread
 /// (the webview event loop owns it, like the macOS hotkey run loop does for
 /// the headless daemon).
@@ -236,17 +344,34 @@ pub fn run() -> ExitCode {
     );
     let first_run = !OnboardingState::load().completed;
 
+    // History store (Phase E-3). Best-effort open: a bad data dir degrades to an
+    // in-memory store rather than blocking startup.
+    let history = Arc::new(open_history());
+    spawn_history_recorder(Arc::clone(&history), &events);
+
     let result = tauri::Builder::default()
         .manage(Shell { handle })
         .manage(OnboardingShell {
             service: onboarding,
         })
+        .manage(ModelManager::new(
+            Arc::new(FakeModelDownloader::default()),
+            Arc::clone(&events),
+        ))
+        .manage(Arc::clone(&history))
         .invoke_handler(tauri::generate_handler![
             trigger,
             session_state,
             settings_get,
             settings_set,
             settings_validate_hotkey,
+            models_list,
+            models_disk_usage,
+            models_download,
+            models_delete,
+            models_set_default,
+            history_list,
+            history_clear,
             onboarding_permission,
             onboarding_request_permission,
             onboarding_open_settings,
