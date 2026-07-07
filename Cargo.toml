@@ -15,8 +15,11 @@ serde_json = "1"
 toml = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
 # macos-private-api: transparent overlay webview background (no-op elsewhere).
-tauri = { version = "2", default-features = true, features = ["macos-private-api"] }
+# tray-icon: the cross-platform menu-bar/system tray the M2 shell owns (E-4).
+tauri = { version = "2", default-features = true, features = ["macos-private-api", "tray-icon"] }
 tauri-build = { version = "2", default-features = true }
+# System clipboard writes for the tray's "recent dictations -> copy" action.
+tauri-plugin-clipboard-manager = "2"
 tokio = { version = "1", default-features = false, features = ["sync"] }
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"

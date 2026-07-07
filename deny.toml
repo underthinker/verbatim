@@ -22,6 +22,10 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-3.0",
+    # Boost license: permissive, OSI-approved, FSF-free. Arrives via
+    # clipboard-win / error-code on arboard's Windows clipboard backend (the
+    # tray's copy-recent-dictation action, E-4).
+    "BSL-1.0",
     # whisper-rs / whisper-rs-sys (the whisper.cpp bindings) are public domain.
     "Unlicense",
 ]

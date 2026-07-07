@@ -28,7 +28,7 @@ use crate::history::{History, HistoryEntry};
 use crate::models::{ManagedModel, ModelManager};
 use crate::onboarding::{self, ModelInfo, Onboarding};
 use crate::settings::Config;
-use crate::{config, daemon, ipc, overlay};
+use crate::{config, daemon, ipc, overlay, tray};
 
 /// How many history rows the window lists (UX.md 7 reverse-chron pairs).
 const HISTORY_LIMIT: u32 = 200;
@@ -349,7 +349,13 @@ pub fn run() -> ExitCode {
     let history = Arc::new(open_history());
     spawn_history_recorder(Arc::clone(&history), &events);
 
+    // Handle + history clones the tray (Phase E-4) owns; it drives live
+    // pause/resume and lists recent dictations from the same stores.
+    let tray_handle = handle.clone();
+    let tray_history = Arc::clone(&history);
+
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Shell { handle })
         .manage(OnboardingShell {
             service: onboarding,
@@ -386,6 +392,10 @@ pub fn run() -> ExitCode {
             // the < 50 ms budget; driven straight from the Rust bus.
             overlay::create_window(app.handle())?;
             overlay::spawn_driver(app.handle().clone(), &events);
+            // Cross-platform tray (Phase E-4): a direct bus consumer like the
+            // overlay; menu actions drive the same runner/config/history.
+            tray::create(app.handle(), tray_handle, tray_history)?;
+            tray::spawn_driver(app.handle().clone(), &events);
             // First run (Phase D): open onboarding instead of the main window;
             // the main window is declared hidden and shown once onboarding is
             // done (or immediately on a returning launch).

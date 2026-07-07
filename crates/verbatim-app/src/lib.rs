@@ -23,3 +23,4 @@ pub mod onboarding;
 pub mod overlay;
 pub mod settings;
 pub mod transport;
+pub mod tray;

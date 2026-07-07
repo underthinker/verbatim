@@ -47,6 +47,9 @@ pub enum Trigger {
 pub struct RunnerStatus {
     pub session: SessionId,
     pub state: SessionState,
+    /// Paused: activation triggers (`Start`, `Toggle` from idle) are ignored
+    /// until resumed. Surfaces so the tray can reflect and toggle it (UX.md 7).
+    pub paused: bool,
 }
 
 /// Runtime knobs for the slice. Polish stays off by default (raw injection
@@ -79,6 +82,7 @@ pub struct RunnerDeps {
 
 enum RunnerCommand {
     Trigger(Trigger),
+    SetPaused(bool),
     Query(oneshot::Sender<RunnerStatus>),
 }
 
@@ -102,6 +106,16 @@ impl RunnerHandle {
     pub async fn trigger(&self, trigger: Trigger) -> Result<(), RunnerError> {
         self.tx
             .send(RunnerCommand::Trigger(trigger))
+            .await
+            .map_err(|_| RunnerError::Stopped)
+    }
+
+    /// Pause or resume activation. While paused the runner ignores triggers
+    /// that would start a new dictation; an in-flight session is untouched and
+    /// `Stop`/`Cancel` still work (UX.md 7 "pause Verbatim").
+    pub async fn set_paused(&self, paused: bool) -> Result<(), RunnerError> {
+        self.tx
+            .send(RunnerCommand::SetPaused(paused))
             .await
             .map_err(|_| RunnerError::Stopped)
     }
@@ -130,6 +144,7 @@ pub struct SessionRunner {
     config: RunnerConfig,
     events: Arc<EventBus>,
     rx: mpsc::Receiver<RunnerCommand>,
+    paused: bool,
 }
 
 impl SessionRunner {
@@ -150,6 +165,7 @@ impl SessionRunner {
             config,
             events,
             rx,
+            paused: false,
         };
         (runner, RunnerHandle { tx })
     }
@@ -159,10 +175,12 @@ impl SessionRunner {
         while let Some(command) = self.rx.recv().await {
             match command {
                 RunnerCommand::Trigger(trigger) => self.handle_trigger(trigger),
+                RunnerCommand::SetPaused(paused) => self.paused = paused,
                 RunnerCommand::Query(reply) => {
                     let snapshot = RunnerStatus {
                         session: self.session.id(),
                         state: self.session.state(),
+                        paused: self.paused,
                     };
                     // A dropped receiver just means the asker gave up.
                     let _ = reply.send(snapshot);
@@ -187,6 +205,10 @@ impl SessionRunner {
     }
 
     fn on_start(&mut self) {
+        if self.paused {
+            tracing::debug!("start ignored: paused");
+            return;
+        }
         if self.is_active() {
             tracing::debug!(state = ?self.session.state(), "start ignored: session already active");
             return;
