@@ -6,7 +6,9 @@ Status: M1 walking skeleton wrapping up (a few desktop/permission-bound injectio
 
 ## Model selection
 
-Suggest a model and effort level at the start of each task, for cost efficiency. Two-tier only (do not use Sonnet):
+Suggest a model and effort level at the start of each task, for cost efficiency.
+When you suggest one, also ask the user whether they want to swap to that model/effort level (they drive the switch; do not assume).
+Two-tier only (do not use Sonnet):
 
 - **Haiku 4.5** - mechanical, bounded work: renames, typo fixes, formatting, single-file edits, status/CI checks, PR babysitting.
 - **Opus 4.8** - anything with design judgment: cross-crate work, debugging, security-sensitive code, feature implementation.

@@ -10,6 +10,11 @@ license.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+# Incremental UTF-8 decoding for llama token pieces (multi-byte chars can span
+# token boundaries). Only pulled with the polish engine; already in the tree via
+# llama-cpp-2.
+encoding_rs = { version = "0.8", optional = true }
+
 # Real whisper.cpp transcription (ENGINEERING.md 2). Metal is compiled in on
 # macOS for the M1 slice; other targets fall back to the CPU build. Optional so
 # fake-only builds and CI without a C toolchain need none of it.
@@ -18,6 +23,20 @@ whisper-rs = { version = "0.16", optional = true, default-features = false, feat
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 whisper-rs = { version = "0.16", optional = true, default-features = false }
+
+# Real llama.cpp text polish (ENGINEERING.md 2, ARCHITECTURE.md 4.3). Metal on
+# macOS mirrors the whisper split; other targets are CPU unless the Vulkan
+# feature is enabled. Optional so fake-only/CI builds pull none of it.
+[target.'cfg(target_os = "macos")'.dependencies.llama-cpp-2]
+version = "0.1"
+optional = true
+default-features = false
+features = ["metal"]
+
+[target.'cfg(not(target_os = "macos"))'.dependencies.llama-cpp-2]
+version = "0.1"
+optional = true
+default-features = false
 
 [dev-dependencies]
 # WAV decoding for the latency bench fixture only; never a pipeline dep.
@@ -37,7 +56,12 @@ whisper-cpp = ["dep:whisper-rs"]
 # GPU is tried first with CPU fallback (see WhisperCppEngine::load).
 whisper-vulkan = ["whisper-cpp", "whisper-rs/vulkan"]
 sherpa-onnx = []
-llama-cpp = []
+# Real llama.cpp polish engine (ARCHITECTURE.md 4.3). Metal is compiled in on
+# macOS above; CPU elsewhere unless `llama-vulkan` adds the GPU backend.
+llama-cpp = ["dep:llama-cpp-2", "dep:encoding_rs"]
+# Vulkan GPU backend for the polish engine on non-macOS targets; requires the
+# Vulkan SDK at build time. GPU is tried first with CPU fallback (see load).
+llama-vulkan = ["llama-cpp", "llama-cpp-2/vulkan"]
 
 [lints]
 workspace = true
