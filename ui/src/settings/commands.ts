@@ -56,3 +56,16 @@ export function formatBytes(bytes: number): string {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
   return `${Math.round(bytes / 1e6)} MB`;
 }
+
+/** Mirrors `history::HistoryEntry` (camelCase over the wire). */
+export interface HistoryEntry {
+  id: number;
+  appId: string;
+  raw: string;
+  polished: string | null;
+  createdAt: number;
+}
+
+export const listHistory = () => invoke<HistoryEntry[]>("history_list");
+
+export const clearHistory = () => invoke<void>("history_clear");

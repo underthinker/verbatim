@@ -13,6 +13,7 @@ thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
 # macos-private-api: transparent overlay webview background (no-op elsewhere).
 tauri = { version = "2", default-features = true, features = ["macos-private-api"] }
 tauri-build = { version = "2", default-features = true }

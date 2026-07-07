@@ -34,7 +34,14 @@ export type UiEvent =
       totalBytes: number | null;
     }
   | { type: "permissionChanged"; capability: string; state: string }
-  | { type: "errorRaised"; session: number | null; id: string };
+  | { type: "errorRaised"; session: number | null; id: string }
+  | {
+      type: "dictationRecorded";
+      session: number;
+      appId: string;
+      raw: string;
+      polished: string | null;
+    };
 
 export function stateLabel(state: SessionStateDto): string {
   return state.error === null ? state.name : `${state.name} (${state.error})`;

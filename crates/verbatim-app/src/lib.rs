@@ -16,6 +16,7 @@ pub mod config;
 pub mod daemon;
 pub mod error_catalog;
 pub mod gui;
+pub mod history;
 pub mod ipc;
 pub mod models;
 pub mod onboarding;

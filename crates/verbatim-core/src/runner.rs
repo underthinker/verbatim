@@ -269,67 +269,82 @@ impl SessionRunner {
         {
             return;
         }
-        let text = if want_polish {
+        let (text, did_polish) = if want_polish {
             self.run_polish(&raw)
         } else {
-            raw
+            (raw.clone(), false)
         };
 
-        self.inject(&text);
+        // Record only on verified delivery: a failed injection is not history.
+        if let Some(app_id) = self.inject(&text) {
+            let polished = did_polish.then(|| text.clone());
+            self.events.publish(Event::DictationRecorded {
+                session: self.session.id(),
+                app_id,
+                raw,
+                polished,
+            });
+        }
     }
 
-    /// Drive the `Polishing` state to `Injecting`, returning the text to inject.
-    /// Polish never blocks: rejection or engine failure degrades to raw
-    /// (UX.md 2, E10 is a notice not a dead end).
-    fn run_polish(&mut self, raw: &str) -> String {
+    /// Drive the `Polishing` state to `Injecting`, returning the text to inject
+    /// and whether polish actually produced it. Polish never blocks: rejection
+    /// or engine failure degrades to raw (UX.md 2, E10 is a notice not a dead
+    /// end), reported as `false` so history records it raw-only.
+    fn run_polish(&mut self, raw: &str) -> (String, bool) {
         match self
             .polish
             .polish(raw, &PolishProfile::default(), self.config.polish_deadline)
         {
             Ok(PolishOutcome::Polished { text }) => {
                 self.step(SessionInput::PolishReady);
-                text
+                (text, true)
             }
             Ok(PolishOutcome::Rejected { reason }) => {
                 tracing::info!(?reason, "polish rejected; injecting raw");
                 self.step(SessionInput::PolishSkipped);
-                raw.to_owned()
+                (raw.to_owned(), false)
             }
             Err(err) => {
                 tracing::warn!(?err, "polish engine failed; injecting raw");
                 self.fault(ErrorId::E10);
-                raw.to_owned()
+                (raw.to_owned(), false)
             }
         }
     }
 
-    /// Inject from `Injecting`. Verified delivery walks to `Idle`; anything
-    /// else routes to the honest-failure catalog (E5 secure field, E7 focus
-    /// lost, E4 everything else) and leaves the session `Failed`.
-    fn inject(&mut self, text: &str) {
+    /// Inject from `Injecting`. Verified delivery walks to `Idle` and returns
+    /// the target `app_id` (for the history record); anything else routes to
+    /// the honest-failure catalog (E5 secure field, E7 focus lost, E4 else),
+    /// leaves the session `Failed`, and returns `None`.
+    fn inject(&mut self, text: &str) -> Option<String> {
         let target = match self.focus.focused_app() {
             Ok(target) => target,
             Err(err) => {
                 tracing::warn!(?err, "focus target unknown");
                 self.fault(ErrorId::E7);
-                return;
+                return None;
             }
         };
         match self.injector.inject(text, &target, InjectionStrategy::Auto) {
             Ok(receipt) if receipt.verified => {
                 self.step(SessionInput::Injected);
+                Some(target.app_id)
             }
             Ok(receipt) => {
                 tracing::warn!(backend = ?receipt.backend, "injection reported unverified");
                 self.fault(ErrorId::E4);
+                None
             }
             Err(InjectError::SecureInput) => {
                 tracing::info!("secure input field focused; dictation paused");
                 self.fault(ErrorId::E5);
+                None
             }
             Err(err) => {
                 tracing::warn!(?err, "injection failed; clipboard fallback");
                 self.fault(ErrorId::E4);
+                None
             }
         }
     }
