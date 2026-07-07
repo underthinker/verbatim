@@ -25,6 +25,7 @@ use verbatim_platform::fake::{FakePermissionProbe, FakePermissionRequester};
 use crate::bridge::{self, SessionStateDto, UiEvent};
 use crate::config::OnboardingState;
 use crate::onboarding::{self, ModelInfo, Onboarding};
+use crate::settings::Config;
 use crate::{daemon, ipc, overlay};
 
 struct Shell {
@@ -123,6 +124,32 @@ fn onboarding_complete(
     Ok(())
 }
 
+/// The persisted user config, for the Settings webview's initial render.
+#[tauri::command]
+fn settings_get() -> Config {
+    Config::load()
+}
+
+/// Validate + persist a full config from the Settings webview (UX.md 7). The
+/// hotkey is conflict-checked before anything is written; an invalid chord is
+/// rejected whole so the file never holds a chord the runner cannot bind.
+///
+/// ponytail: this persists only - live re-apply of hotkey mode / model to the
+/// running runner takes effect on next launch. Wire a runner reconfigure
+/// command when in-session rebinding is needed.
+#[tauri::command]
+fn settings_set(config: Config) -> Result<(), String> {
+    Config::validate_hotkey(&config.hotkey).map_err(|err| err.to_string())?;
+    config.save().map_err(|err| err.to_string())
+}
+
+/// Validate a proposed hotkey chord without persisting (live conflict check as
+/// the user types a rebind, UX.md 3).
+#[tauri::command]
+fn settings_validate_hotkey(chord: String) -> Result<(), String> {
+    Config::validate_hotkey(&chord).map_err(|err| err.to_string())
+}
+
 /// Trigger dictation from the webview. The verb set is the same closed set
 /// the IPC socket accepts (`ipc::Request::parse`); anything else is rejected
 /// before interpretation, mirroring the wire-protocol posture.
@@ -217,6 +244,9 @@ pub fn run() -> ExitCode {
         .invoke_handler(tauri::generate_handler![
             trigger,
             session_state,
+            settings_get,
+            settings_set,
+            settings_validate_hotkey,
             onboarding_permission,
             onboarding_request_permission,
             onboarding_open_settings,

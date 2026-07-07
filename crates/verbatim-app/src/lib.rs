@@ -19,4 +19,5 @@ pub mod gui;
 pub mod ipc;
 pub mod onboarding;
 pub mod overlay;
+pub mod settings;
 pub mod transport;
