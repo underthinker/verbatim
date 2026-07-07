@@ -38,7 +38,11 @@ function isSatisfied(state: PermissionState): boolean {
 
 function ProgressDots({ index }: { index: number }) {
   return (
-    <div className="dots" role="presentation">
+    <div
+      className="dots"
+      role="img"
+      aria-label={`Step ${index + 1} of ${STEPS.length}`}
+    >
       {STEPS.map((step, i) => (
         <span
           key={step}

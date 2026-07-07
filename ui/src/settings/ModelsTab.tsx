@@ -117,12 +117,16 @@ export default function ModelsTab() {
                 {model.installed ? (
                   <>
                     {!model.isDefault && (
-                      <button onClick={() => makeDefault(model.id)}>
+                      <button
+                        aria-label={`Set ${model.name} as default`}
+                        onClick={() => makeDefault(model.id)}
+                      >
                         Set default
                       </button>
                     )}
                     <button
                       className="models__delete"
+                      aria-label={`Delete ${model.name}`}
                       onClick={() => remove(model.id)}
                     >
                       Delete
@@ -130,6 +134,7 @@ export default function ModelsTab() {
                   </>
                 ) : (
                   <button
+                    aria-label={`Download ${model.name}`}
                     onClick={() => download(model.id)}
                     disabled={downloading}
                   >
