@@ -34,7 +34,7 @@ Scope: overlay (all states from UX 2), onboarding (UX 6), settings, model manage
 Acceptance criteria:
 
 - [ ] A non-technical tester completes install -> first dictation in < 5 min without help, on each platform.
-- [ ] Every UX error state is reachable in a test harness and shows its designed response; zero dead ends.
+- [x] Every UX error state is reachable in a test harness and shows its designed response; zero dead ends.
 - [ ] Overlay never takes focus (verified on KDE, the spike 1 regression case) and respects reduced-motion.
 - [ ] Accessibility pass: keyboard-only navigation, screen-reader labels, no color-only signaling.
 
