@@ -52,7 +52,11 @@ export default function HistoryList() {
     <div className="history">
       <div className="history__header">
         <span className="settings__hint">{entries.length} recent</span>
-        <button className="models__delete" onClick={clear}>
+        <button
+          className="models__delete"
+          aria-label="Clear all dictation history"
+          onClick={clear}
+        >
           Clear all
         </button>
       </div>
@@ -63,7 +67,10 @@ export default function HistoryList() {
               <span className="models__sub">
                 {entry.appId} · {formatTime(entry.createdAt)}
               </span>
-              <button onClick={() => copyRaw(entry)}>
+              <button
+                aria-label={`Copy raw transcript from ${entry.appId} at ${formatTime(entry.createdAt)}`}
+                onClick={() => copyRaw(entry)}
+              >
                 {copied === entry.id ? "Copied" : "Copy raw"}
               </button>
             </div>

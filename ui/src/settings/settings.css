@@ -75,6 +75,13 @@ body {
   border-radius: 4px;
 }
 
+/* High-contrast: use the system focus color so the ring survives (UX.md 8). */
+@media (forced-colors: active) {
+  .settings :focus-visible {
+    outline-color: Highlight;
+  }
+}
+
 .settings__panel {
   flex: 1;
   padding: 24px;

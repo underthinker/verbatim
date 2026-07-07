@@ -163,6 +163,17 @@ body,
   background: currentColor;
 }
 
+/* High-contrast / forced-colors (UX.md 8): the translucent pill background is
+   dropped by the OS, so a solid border keeps the pill shape visible. */
+@media (forced-colors: active) {
+  .pill {
+    border: 1px solid CanvasText;
+  }
+  .action {
+    border: 1px solid CanvasText;
+  }
+}
+
 /* Reduced motion: no entrance, no shimmer, no sweep, no fades (UX.md 8). */
 .reduced-motion,
 .reduced-motion .label,

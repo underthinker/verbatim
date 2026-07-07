@@ -1,7 +1,7 @@
 // The Settings surface (UX.md 7): the steady-state main window. Tabs bound to
 // the persisted config via Tauri commands. No business logic - the Rust side
 // validates the hotkey and owns every default.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Config, getConfig, setConfig, validateHotkey } from "./commands";
 import HistoryList from "./HistoryList";
@@ -15,6 +15,18 @@ export default function Settings() {
   const [tab, setTab] = useState<Tab>("General");
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // Roving arrow-key navigation between tabs (WAI-ARIA tablist, UX.md 8).
+  const onTabKey = (e: React.KeyboardEvent, i: number) => {
+    const delta =
+      e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (delta === 0) return;
+    e.preventDefault();
+    const next = (i + delta + TABS.length) % TABS.length;
+    setTab(TABS[next]);
+    tabRefs.current[next]?.focus();
+  };
 
   useEffect(() => {
     getConfig().then(setLocal).catch(() => setLocal(null));
@@ -51,15 +63,20 @@ export default function Settings() {
   return (
     <main className="settings">
       <div className="settings__tabs" role="tablist" aria-label="Settings sections">
-        {TABS.map((name) => (
+        {TABS.map((name, i) => (
           <button
             key={name}
+            ref={(el) => {
+              tabRefs.current[i] = el;
+            }}
             role="tab"
             id={`tab-${name}`}
             aria-selected={tab === name}
             aria-controls={`panel-${name}`}
+            tabIndex={tab === name ? 0 : -1}
             className={tab === name ? "settings__tab settings__tab--active" : "settings__tab"}
             onClick={() => setTab(name)}
+            onKeyDown={(e) => onTabKey(e, i)}
           >
             {name}
           </button>
