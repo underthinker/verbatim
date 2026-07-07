@@ -236,7 +236,7 @@ pub fn spawn_driver(app: AppHandle, events: &EventBus, announcer: Arc<dyn Access
             match receiver.recv().await {
                 Ok(Event::SessionTransition { from, to, .. }) => {
                     if let Some(directive) = directive(from, to) {
-                        apply(&app, &generation, &*announcer, directive);
+                        apply(&app, &generation, &announcer, directive);
                     }
                 }
                 Ok(Event::InputLevel { rms }) => {
@@ -259,7 +259,7 @@ pub fn spawn_driver(app: AppHandle, events: &EventBus, announcer: Arc<dyn Access
 fn apply(
     app: &AppHandle,
     generation: &Arc<AtomicU64>,
-    announcer: &dyn AccessibilityAnnouncer,
+    announcer: &Arc<dyn AccessibilityAnnouncer>,
     directive: Directive,
 ) {
     let stamp = generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -270,12 +270,17 @@ fn apply(
 
     // Announce the state to a screen reader (default on when one is running);
     // the click-through overlay window is never focused, so this OS-level
-    // announcement is the only path assistive tech hears (UX.md 8).
+    // announcement is the only path assistive tech hears (UX.md 8). The post
+    // must run on the main thread (NSAccessibility contract), so it hops there
+    // via Tauri while the driver keeps consuming the bus off-thread.
     let announce = |phase: OverlayPhase, error: Option<&ErrorPresentation>| {
         if announcer.screen_reader_active()
             && let Some(message) = announcement(phase, error)
         {
-            announcer.announce(&message);
+            let announcer = Arc::clone(announcer);
+            if let Err(err) = app.run_on_main_thread(move || announcer.announce(&message)) {
+                tracing::warn!(?err, "overlay a11y announce dispatch failed");
+            }
         }
     };
 
