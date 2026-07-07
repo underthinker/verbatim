@@ -4,8 +4,9 @@
 import { useEffect, useState } from "react";
 
 import { Config, getConfig, setConfig, validateHotkey } from "./commands";
+import ModelsTab from "./ModelsTab";
 
-const TABS = ["General", "Dictation", "Polish", "History", "About"] as const;
+const TABS = ["General", "Dictation", "Polish", "Models", "History", "About"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function Settings() {
@@ -111,7 +112,7 @@ export default function Settings() {
               <span>Transcription model</span>
               <strong>{config.transcription_model ?? "None selected"}</strong>
             </p>
-            <p className="settings__hint">Manage models in the Model Manager.</p>
+            <p className="settings__hint">Manage models in the Models tab.</p>
           </>
         )}
 
@@ -131,6 +132,8 @@ export default function Settings() {
             </p>
           </>
         )}
+
+        {tab === "Models" && <ModelsTab />}
 
         {tab === "History" && (
           <label className="settings__field" htmlFor="retention">

@@ -26,3 +26,33 @@ export const setConfig = (config: Config) =>
 /** Resolves when the chord is valid; rejects with the reason string otherwise. */
 export const validateHotkey = (chord: string) =>
   invoke<void>("settings_validate_hotkey", { chord });
+
+/** Mirrors `models::ManagedModel` (camelCase over the wire). */
+export interface ManagedModel {
+  id: string;
+  name: string;
+  kind: "transcription" | "polish";
+  sizeBytes: number;
+  installed: boolean;
+  onDiskBytes: number | null;
+  isDefault: boolean;
+}
+
+export const listModels = () => invoke<ManagedModel[]>("models_list");
+
+export const modelsDiskUsage = () => invoke<number>("models_disk_usage");
+
+export const downloadModel = (modelId: string) =>
+  invoke<string>("models_download", { modelId });
+
+export const deleteModel = (modelId: string) =>
+  invoke<void>("models_delete", { modelId });
+
+export const setDefaultModel = (modelId: string) =>
+  invoke<void>("models_set_default", { modelId });
+
+/** Human-readable byte size for model rows (UX.md 7 disk usage). */
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  return `${Math.round(bytes / 1e6)} MB`;
+}

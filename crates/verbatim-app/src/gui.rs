@@ -24,6 +24,7 @@ use verbatim_platform::fake::{FakePermissionProbe, FakePermissionRequester};
 
 use crate::bridge::{self, SessionStateDto, UiEvent};
 use crate::config::OnboardingState;
+use crate::models::{ManagedModel, ModelManager};
 use crate::onboarding::{self, ModelInfo, Onboarding};
 use crate::settings::Config;
 use crate::{daemon, ipc, overlay};
@@ -150,6 +151,44 @@ fn settings_validate_hotkey(chord: String) -> Result<(), String> {
     Config::validate_hotkey(&chord).map_err(|err| err.to_string())
 }
 
+/// The catalog with each model's installed state, size, and default flag.
+#[tauri::command]
+fn models_list(state: tauri::State<'_, ModelManager>) -> Vec<ManagedModel> {
+    state.list()
+}
+
+/// Total bytes used by installed model files (disk-usage readout, UX.md 7).
+#[tauri::command]
+fn models_disk_usage(state: tauri::State<'_, ModelManager>) -> u64 {
+    state.disk_usage()
+}
+
+/// Download a model, streaming `DownloadProgress` on the event bridge; returns
+/// the resolved on-disk path. An interruption surfaces as an error for the UI
+/// to offer a resumable retry (E8).
+#[tauri::command]
+fn models_download(
+    state: tauri::State<'_, ModelManager>,
+    model_id: String,
+) -> Result<String, String> {
+    state.download(&model_id).map_err(|err| err.to_string())
+}
+
+/// Delete an installed model; clears the default for its kind if it was set.
+#[tauri::command]
+fn models_delete(state: tauri::State<'_, ModelManager>, model_id: String) -> Result<(), String> {
+    state.delete(&model_id).map_err(|err| err.to_string())
+}
+
+/// Set the default model for its kind (must be installed), persisted to config.
+#[tauri::command]
+fn models_set_default(
+    state: tauri::State<'_, ModelManager>,
+    model_id: String,
+) -> Result<(), String> {
+    state.set_default(&model_id).map_err(|err| err.to_string())
+}
+
 /// Trigger dictation from the webview. The verb set is the same closed set
 /// the IPC socket accepts (`ipc::Request::parse`); anything else is rejected
 /// before interpretation, mirroring the wire-protocol posture.
@@ -241,12 +280,21 @@ pub fn run() -> ExitCode {
         .manage(OnboardingShell {
             service: onboarding,
         })
+        .manage(ModelManager::new(
+            Arc::new(FakeModelDownloader::default()),
+            Arc::clone(&events),
+        ))
         .invoke_handler(tauri::generate_handler![
             trigger,
             session_state,
             settings_get,
             settings_set,
             settings_validate_hotkey,
+            models_list,
+            models_disk_usage,
+            models_download,
+            models_delete,
+            models_set_default,
             onboarding_permission,
             onboarding_request_permission,
             onboarding_open_settings,
