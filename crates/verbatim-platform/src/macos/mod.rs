@@ -9,6 +9,8 @@
 //! Hotkeys remain planned per spike 2: Carbon `RegisterEventHotKey` (no TCC).
 
 #[cfg(feature = "mac-inject")]
+mod announce;
+#[cfg(feature = "mac-inject")]
 mod clipboard;
 #[cfg(feature = "mac-inject")]
 mod ffi;
@@ -19,6 +21,8 @@ mod inject;
 #[cfg(feature = "mac-inject")]
 mod permission;
 
+#[cfg(feature = "mac-inject")]
+pub use announce::MacAnnouncer;
 #[cfg(feature = "mac-inject")]
 pub use clipboard::MacClipboardGuard;
 #[cfg(feature = "mac-inject")]

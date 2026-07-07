@@ -20,6 +20,9 @@ use tauri::{Emitter, Manager};
 use verbatim_core::event::{Event, EventBus};
 use verbatim_core::runner::{RunnerConfig, RunnerHandle, SessionRunner};
 use verbatim_engines::fake::FakeModelDownloader;
+use verbatim_platform::AccessibilityAnnouncer;
+#[cfg(not(all(feature = "real-injection", target_os = "macos")))]
+use verbatim_platform::fake::FakeAnnouncer;
 use verbatim_platform::fake::{FakePermissionProbe, FakePermissionRequester};
 
 use crate::bridge::{self, SessionStateDto, UiEvent};
@@ -391,7 +394,15 @@ pub fn run() -> ExitCode {
             // Overlay (Phase B): created hidden so ARMING can show it within
             // the < 50 ms budget; driven straight from the Rust bus.
             overlay::create_window(app.handle())?;
-            overlay::spawn_driver(app.handle().clone(), &events);
+            // Real macOS announcer (VoiceOver detect + NSAccessibility post)
+            // under the real seams; the fake (no screen reader) everywhere else,
+            // including headless CI. Windows/Linux real backends are follow-ups.
+            #[cfg(all(feature = "real-injection", target_os = "macos"))]
+            let announcer: Arc<dyn AccessibilityAnnouncer> =
+                Arc::new(verbatim_platform::macos::MacAnnouncer::new());
+            #[cfg(not(all(feature = "real-injection", target_os = "macos")))]
+            let announcer: Arc<dyn AccessibilityAnnouncer> = Arc::new(FakeAnnouncer::default());
+            overlay::spawn_driver(app.handle().clone(), &events, announcer);
             // Cross-platform tray (Phase E-4): a direct bus consumer like the
             // overlay; menu actions drive the same runner/config/history.
             tray::create(app.handle(), tray_handle, tray_history)?;

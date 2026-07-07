@@ -11,8 +11,8 @@ use crate::errors::{
     PermissionRequestError,
 };
 use crate::traits::{
-    AudioCapture, Autostart, ClipboardGuard, FocusTracker, HotkeyCallback, HotkeyManager,
-    PermissionProbe, PermissionRequest, TextInjector,
+    AccessibilityAnnouncer, AudioCapture, Autostart, ClipboardGuard, FocusTracker, HotkeyCallback,
+    HotkeyManager, PermissionProbe, PermissionRequest, TextInjector,
 };
 use crate::types::{
     Capability, ClipboardSnapshot, FocusedApp, HotkeyBinding, HotkeyEvent, InjectionBackend,
@@ -445,6 +445,38 @@ impl Autostart for FakeAutostart {
     fn set_enabled(&self, enabled: bool) -> Result<(), AutostartError> {
         self.enabled.store(enabled, Ordering::SeqCst);
         Ok(())
+    }
+}
+
+/// An `AccessibilityAnnouncer` that records what it was asked to speak and
+/// reports a screen-reader state the test sets. Default: no screen reader.
+#[derive(Default)]
+pub struct FakeAnnouncer {
+    screen_reader: AtomicBool,
+    announced: Mutex<Vec<String>>,
+}
+
+impl FakeAnnouncer {
+    /// Pretend a screen reader is (not) running.
+    pub fn set_screen_reader(&self, active: bool) {
+        self.screen_reader.store(active, Ordering::SeqCst);
+    }
+
+    /// Everything announced so far, in order.
+    pub fn announcements(&self) -> Vec<String> {
+        self.announced.lock().map(|v| v.clone()).unwrap_or_default()
+    }
+}
+
+impl AccessibilityAnnouncer for FakeAnnouncer {
+    fn screen_reader_active(&self) -> bool {
+        self.screen_reader.load(Ordering::SeqCst)
+    }
+
+    fn announce(&self, message: &str) {
+        if let Ok(mut v) = self.announced.lock() {
+            v.push(message.to_owned());
+        }
     }
 }
 

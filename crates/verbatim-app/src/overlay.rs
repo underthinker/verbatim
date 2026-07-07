@@ -22,6 +22,7 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindo
 
 use verbatim_core::event::{Event, EventBus};
 use verbatim_core::session::SessionState;
+use verbatim_platform::AccessibilityAnnouncer;
 
 use crate::error_catalog::{self, ErrorPresentation};
 
@@ -42,6 +43,9 @@ const BOTTOM_MARGIN: f64 = 48.0;
 const SUCCESS_LINGER: Duration = Duration::from_millis(450);
 /// "Didn't catch anything" soft flash duration (UX.md 2 global rules).
 const NOTHING_HEARD_LINGER: Duration = Duration::from_millis(1400);
+/// Auto-dismiss timeouts are stretched while assistive tech is active so a
+/// screen reader has time to finish speaking the state (UX.md 8).
+const ASSISTIVE_LINGER_FACTOR: u32 = 3;
 
 /// What the overlay is currently presenting. The webview owns the visuals
 /// (shimmer, waveform, sweep, progress, tick) and reduced-motion handling;
@@ -147,6 +151,32 @@ pub fn directive(from: SessionState, to: SessionState) -> Option<Directive> {
     }
 }
 
+/// The spoken form of an overlay phase for the OS accessibility announcement
+/// (UX.md 8). Mirrors the webview's visible `PHASE_LABEL`; errors speak their
+/// plain catalog copy. `None` for states with nothing worth announcing.
+fn announcement(phase: OverlayPhase, error: Option<&ErrorPresentation>) -> Option<String> {
+    let text = match phase {
+        OverlayPhase::Arming => "Starting",
+        OverlayPhase::Recording => "Listening",
+        OverlayPhase::Finalizing => "Finishing",
+        OverlayPhase::Processing => "Transcribing",
+        OverlayPhase::Success => "Done",
+        OverlayPhase::NothingHeard => "Didn't catch anything",
+        OverlayPhase::Error => return error.map(|e| e.copy.to_owned()),
+    };
+    Some(text.to_owned())
+}
+
+/// Stretch an auto-dismiss linger when a screen reader is active so it has time
+/// to speak the state before the pill vanishes (UX.md 8).
+fn linger_for(base: Duration, screen_reader: bool) -> Duration {
+    if screen_reader {
+        base * ASSISTIVE_LINGER_FACTOR
+    } else {
+        base
+    }
+}
+
 /// Build the overlay window, hidden. Every flag here is a UX.md 2/7
 /// requirement: click-through, never focused, above all windows, on every
 /// workspace, no chrome.
@@ -195,7 +225,7 @@ fn position_bottom_center(window: &WebviewWindow) -> tauri::Result<()> {
 /// Subscribe the overlay to the core bus and drive it for the lifetime of the
 /// app. Lagged receivers skip to the live edge, same policy as the webview
 /// bridge: transitions replay and the next one supersedes anything missed.
-pub fn spawn_driver(app: AppHandle, events: &EventBus) {
+pub fn spawn_driver(app: AppHandle, events: &EventBus, announcer: Arc<dyn AccessibilityAnnouncer>) {
     let mut receiver = events.subscribe();
     // Bumped on every directive; a pending flash-hide only fires if it is
     // still the latest presentation (a new session cancels the hide).
@@ -206,7 +236,7 @@ pub fn spawn_driver(app: AppHandle, events: &EventBus) {
             match receiver.recv().await {
                 Ok(Event::SessionTransition { from, to, .. }) => {
                     if let Some(directive) = directive(from, to) {
-                        apply(&app, &generation, directive);
+                        apply(&app, &generation, &announcer, directive);
                     }
                 }
                 Ok(Event::InputLevel { rms }) => {
@@ -226,14 +256,36 @@ pub fn spawn_driver(app: AppHandle, events: &EventBus) {
     });
 }
 
-fn apply(app: &AppHandle, generation: &Arc<AtomicU64>, directive: Directive) {
+fn apply(
+    app: &AppHandle,
+    generation: &Arc<AtomicU64>,
+    announcer: &Arc<dyn AccessibilityAnnouncer>,
+    directive: Directive,
+) {
     let stamp = generation.fetch_add(1, Ordering::SeqCst) + 1;
     let Some(window) = app.get_webview_window(WINDOW_LABEL) else {
         tracing::warn!("overlay window missing; dropping directive {directive:?}");
         return;
     };
 
+    // Announce the state to a screen reader (default on when one is running);
+    // the click-through overlay window is never focused, so this OS-level
+    // announcement is the only path assistive tech hears (UX.md 8). The post
+    // must run on the main thread (NSAccessibility contract), so it hops there
+    // via Tauri while the driver keeps consuming the bus off-thread.
+    let announce = |phase: OverlayPhase, error: Option<&ErrorPresentation>| {
+        if announcer.screen_reader_active()
+            && let Some(message) = announcement(phase, error)
+        {
+            let announcer = Arc::clone(announcer);
+            if let Err(err) = app.run_on_main_thread(move || announcer.announce(&message)) {
+                tracing::warn!(?err, "overlay a11y announce dispatch failed");
+            }
+        }
+    };
+
     let present = |phase: OverlayPhase, error: Option<ErrorPresentation>| {
+        announce(phase, error.as_ref());
         if let Err(err) = app.emit_to(
             WINDOW_LABEL,
             EVENT_CHANNEL,
@@ -250,6 +302,7 @@ fn apply(app: &AppHandle, generation: &Arc<AtomicU64>, directive: Directive) {
         Directive::Show { phase, error } => present(phase, error),
         Directive::Flash { phase, linger } => {
             present(phase, None);
+            let linger = linger_for(linger, announcer.screen_reader_active());
             let window = window.clone();
             let generation = Arc::clone(generation);
             tauri::async_runtime::spawn(async move {
@@ -366,6 +419,47 @@ mod tests {
                 "error": null,
             })
         );
+    }
+
+    #[test]
+    fn every_visible_phase_has_a_spoken_form() {
+        use OverlayPhase as P;
+        for phase in [
+            P::Arming,
+            P::Recording,
+            P::Finalizing,
+            P::Processing,
+            P::Success,
+            P::NothingHeard,
+        ] {
+            assert!(
+                announcement(phase, None).is_some(),
+                "{phase:?} needs a screen-reader announcement"
+            );
+        }
+    }
+
+    #[test]
+    fn error_announcement_speaks_the_catalog_copy() {
+        let present = error_catalog::present(ErrorId::E6);
+        assert_eq!(
+            announcement(OverlayPhase::Error, Some(&present)),
+            Some(present.copy.to_owned())
+        );
+        // No presentation, nothing to say rather than a misleading generic.
+        assert_eq!(announcement(OverlayPhase::Error, None), None);
+    }
+
+    #[test]
+    fn assistive_tech_stretches_auto_dismiss_timeouts() {
+        // Without a screen reader the linger is untouched; with one it grows so
+        // the state can be spoken before the pill vanishes (UX.md 8).
+        assert_eq!(linger_for(SUCCESS_LINGER, false), SUCCESS_LINGER);
+        assert_eq!(
+            linger_for(SUCCESS_LINGER, true),
+            SUCCESS_LINGER * ASSISTIVE_LINGER_FACTOR
+        );
+        assert!(linger_for(NOTHING_HEARD_LINGER, true) > NOTHING_HEARD_LINGER);
     }
 
     #[test]

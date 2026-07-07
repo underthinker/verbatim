@@ -47,6 +47,11 @@ objc2-foundation = { version = "0.3", optional = true, default-features = false,
     "NSData",
     "NSDate",
     "NSRunLoop",
+    # Overlay screen-reader announcements (UX.md 8): the NSAccessibility
+    # announcement userInfo is an NSDictionary of the message + a priority
+    # NSNumber.
+    "NSDictionary",
+    "NSValue",
 ] }
 objc2-app-kit = { version = "0.3", optional = true, default-features = false, features = [
     "std",
@@ -102,7 +107,13 @@ windows = { version = "0.61", optional = true, features = [
 cpal-audio = ["dep:cpal", "dep:ringbuf", "dep:rubato"]
 # Compile the real macOS injection/focus/clipboard/permission seams. Off by
 # default so headless CI and the fake pipeline never touch AppKit/CoreGraphics.
-mac-inject = ["dep:objc2", "dep:objc2-foundation", "dep:objc2-app-kit", "dep:core-graphics"]
+mac-inject = [
+    "dep:objc2",
+    "dep:objc2-foundation",
+    "dep:objc2-app-kit",
+    "dep:core-graphics",
+    "dep:core-foundation",
+]
 
 # Compile the real global-hotkey-backed HotkeyManager. Off by default for the
 # same reason: fakes drive tests and headless CI.
