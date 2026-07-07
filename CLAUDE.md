@@ -15,9 +15,13 @@ Two-tier only (do not use Sonnet):
 
 Pick effort (low/med/high) based on ambiguity and blast radius.
 
+### Pre-merge gate (lean, no LLM review pass)
+
+Before shipping, run the local checks: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test --locked`, `cargo deny check`. Auto-fix any issues found. Squash all style/fmt/clippy fixups into the feature commit — no standalone style fixup commits on main.
+
 ### Ship flow delegation
 
-Once the code work for a phase/branch is done, delegate the **entire ship tail to Haiku**: push branch, open the PR, babysit CI until green, merge (squash + delete branch). Opus does not push/PR/merge itself. If CI fails on something other than known-flaky `latency bench (macos-latest)`, Haiku stops and reports back for Opus to fix.
+Once the code is clean, delegate the **entire ship tail to Haiku**: push branch, open the PR, babysit CI until green, merge (squash + delete branch). Opus does not push/PR/merge itself. If CI fails on something other than known-flaky `latency bench (macos-latest)`, Haiku stops and reports back for Opus to fix.
 
 ## Source of truth
 
@@ -81,6 +85,7 @@ Feature flags gate real backends behind traits: `cpal-audio` (mic capture), `rea
 
 ## Conventions
 
+- Commits use `Underthinker` as author name (human and agent). Agent sets `GIT_AUTHOR_NAME=Underthinker GIT_COMMITTER_NAME=Underthinker` for every commit.
 - Injection backends report honest receipts (real delivery ordered before fallback); seam tests assert ordering. See `docs/M1_INJECTION_VERIFICATION.md`.
 - `spikes/` holds throwaway prototypes - no quality bar, not production code.
 - Data locations differ per OS (config/models/history/logs) - see ENGINEERING.md section 5.2.

@@ -6,8 +6,11 @@
 //! - **Temperature 0.** Polish must be deterministic and meaning-preserving, so
 //!   generation is greedy (`LlamaSampler::greedy`), never sampled.
 //! - **Deadline-bounded.** Generation checks the elapsed time before every
-//!   decode step; a miss self-rejects with `PolishRejection::DeadlineMissed`
-//!   rather than blocking the pipeline (the caller then injects raw).
+//!   *generation* decode; a miss self-rejects with
+//!   `PolishRejection::DeadlineMissed` rather than blocking the pipeline (the
+//!   caller then injects raw). The one-shot prompt prefill runs to completion
+//!   (a single decode call is not preemptible), then the loop-top check rejects
+//!   before generating a token if the prefill already blew the deadline.
 //! - **Weights stay resident.** The expensive `LlamaModel` is loaded once and
 //!   reused; the per-call `LlamaContext` borrows the model, so it is created
 //!   fresh each `polish` (cheap relative to loading weights) to keep the engine
@@ -42,6 +45,13 @@ const N_CTX: u32 = 4096;
 /// hundred tokens, so this bounds a runaway generation independent of the
 /// deadline (belt and suspenders).
 const MAX_OUTPUT_TOKENS: usize = 1024;
+
+/// Stop marker for greedy generation. `build_prompt` frames the transcript as a
+/// `Raw:` / `Polished:` completion; a greedy model routinely finishes the answer
+/// then continues the pattern with a new `\nRaw:` turn (no EOG). We cut at the
+/// first such marker so that hallucinated continuation never lands in the
+/// injected text. Kept in lockstep with `build_prompt`'s `Raw:` framing.
+const STOP_MARKER: &str = "\nRaw:";
 
 /// The llama.cpp backend must be initialised exactly once per process; it owns
 /// global ggml state. Held in a `OnceLock` so multiple engines share it.
@@ -164,9 +174,12 @@ impl PolishEngine for LlamaPolishEngine {
         let tokens = model
             .str_to_token(&prompt, AddBos::Always)
             .map_err(|err| EngineError::Inference(err.to_string()))?;
-        if tokens.len() >= N_CTX as usize {
+        // Reserve KV room for generation: the prompt plus a full-length output
+        // must fit the context, or `ctx.decode` errors mid-generation once the
+        // window fills. Reject up front instead.
+        if tokens.len() + MAX_OUTPUT_TOKENS >= N_CTX as usize {
             return Err(EngineError::Inference(
-                "prompt exceeds polish context window".to_owned(),
+                "prompt leaves no room in the polish context window".to_owned(),
             ));
         }
 
@@ -209,6 +222,14 @@ impl PolishEngine for LlamaPolishEngine {
                 .token_to_piece(token, &mut decoder, false, None)
                 .map_err(|err| EngineError::Inference(err.to_string()))?;
             output.push_str(&piece);
+
+            // Stop if the model rolled past the answer into a new `Raw:` turn:
+            // truncate the marker (and everything after) so continuation never
+            // reaches the injected text.
+            if let Some(idx) = output.find(STOP_MARKER) {
+                output.truncate(idx);
+                break;
+            }
 
             generated += 1;
             if generated >= MAX_OUTPUT_TOKENS {
@@ -281,6 +302,24 @@ mod tests {
         assert!(prompt.contains("um hello"));
         assert!(prompt.contains("Hello."));
         assert!(prompt.ends_with("Raw: so uh whats a pcm\nPolished:"));
+    }
+
+    #[test]
+    fn stop_marker_matches_the_fewshot_framing() {
+        // The generation loop cuts at STOP_MARKER to drop hallucinated `Raw:`
+        // continuations. That only works if the marker is exactly how
+        // build_prompt delimits turns; assert the coupling so a reframing that
+        // drops the marker fails here instead of leaking garbage to injection.
+        let profile = PolishProfile {
+            id: "t".to_owned(),
+            system_prompt: String::new(),
+            few_shot: vec![FewShotExample {
+                raw: "a".to_owned(),
+                polished: "A.".to_owned(),
+            }],
+            dictionary: Vec::new(),
+        };
+        assert!(build_prompt(&profile, "b").contains(STOP_MARKER));
     }
 
     /// A GGUF polish model to exercise the real FFI path. Skipped when unset so
