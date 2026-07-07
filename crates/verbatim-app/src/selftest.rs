@@ -19,7 +19,10 @@ pub fn run(text: Option<String>) -> ExitCode {
     run_impl(&text)
 }
 
-#[cfg(all(feature = "real-injection", any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+#[cfg(all(
+    feature = "real-injection",
+    any(target_os = "macos", target_os = "linux", target_os = "windows")
+))]
 fn run_impl(text: &str) -> ExitCode {
     use std::thread;
     use std::time::Duration;
@@ -47,9 +50,7 @@ fn run_impl(text: &str) -> ExitCode {
 
     println!("verbatim inject-selftest");
     println!("probed backends (fallback order): {:?}", injector.probe());
-    println!(
-        "\nFocus a text field in the target app now. Injecting in {FOCUS_COUNTDOWN}s..."
-    );
+    println!("\nFocus a text field in the target app now. Injecting in {FOCUS_COUNTDOWN}s...");
     for remaining in (1..=FOCUS_COUNTDOWN).rev() {
         println!("  {remaining}...");
         thread::sleep(Duration::from_secs(1));
@@ -90,7 +91,10 @@ fn run_impl(text: &str) -> ExitCode {
     }
 }
 
-#[cfg(not(all(feature = "real-injection", any(target_os = "macos", target_os = "linux", target_os = "windows"))))]
+#[cfg(not(all(
+    feature = "real-injection",
+    any(target_os = "macos", target_os = "linux", target_os = "windows")
+)))]
 fn run_impl(_text: &str) -> ExitCode {
     eprintln!(
         "inject-selftest needs a real backend: rebuild with `--features real-injection` \
