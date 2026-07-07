@@ -18,7 +18,8 @@ use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
 use verbatim_engines::{
-    PolishEngine, PolishOutcome, PolishProfile, TranscribeOptions, TranscriptionEngine,
+    PolishEngine, PolishOutcome, PolishProfile, PolishRejection, TranscribeOptions,
+    TranscriptionEngine,
 };
 use verbatim_platform::{AudioCapture, FocusTracker, InjectError, InjectionStrategy, TextInjector};
 
@@ -318,9 +319,19 @@ impl SessionRunner {
             .polish
             .polish(raw, &PolishProfile::default(), self.config.polish_deadline)
         {
-            Ok(PolishOutcome::Polished { text }) => {
+            Ok(PolishOutcome::Polished { text })
+                if crate::polish_guard::within_guard(raw, &text) =>
+            {
                 self.step(SessionInput::PolishReady);
                 (text, true)
+            }
+            Ok(PolishOutcome::Polished { .. }) => {
+                tracing::info!(
+                    reason = ?PolishRejection::SimilarityGuard,
+                    "polish exceeded similarity guard; injecting raw"
+                );
+                self.step(SessionInput::PolishSkipped);
+                (raw.to_owned(), false)
             }
             Ok(PolishOutcome::Rejected { reason }) => {
                 tracing::info!(?reason, "polish rejected; injecting raw");
