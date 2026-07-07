@@ -10,7 +10,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use verbatim_app::{client, daemon, gui, ipc};
+use verbatim_app::{client, daemon, gui, ipc, selftest};
 
 #[derive(Parser)]
 #[command(
@@ -39,6 +39,13 @@ enum Command {
     },
     /// Show the state of the running Verbatim instance.
     Status,
+    /// Inject a sentinel string into the focused foreign app to verify the
+    /// platform backend chain end-to-end (M1 acceptance, issue #18). Needs a
+    /// `real-injection` build; confirm the sentinel lands to tick the box.
+    InjectSelftest {
+        /// Text to inject instead of the built-in sentinel.
+        text: Option<String>,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -61,6 +68,10 @@ fn main() -> ExitCode {
         }
         Command::Trigger { verb } => block_on(run_trigger(verb)),
         Command::Status => block_on(run_status()),
+        Command::InjectSelftest { text } => {
+            init_tracing();
+            selftest::run(text)
+        }
     }
 }
 

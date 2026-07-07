@@ -21,6 +21,7 @@ pub mod ipc;
 pub mod models;
 pub mod onboarding;
 pub mod overlay;
+pub mod selftest;
 pub mod settings;
 pub mod transport;
 pub mod tray;
