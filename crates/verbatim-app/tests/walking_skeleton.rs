@@ -156,6 +156,32 @@ async fn hotkey_to_injected_text_happy_path() {
     assert_eq!(recorded, ("hello from verbatim".to_owned(), None));
 }
 
+/// Pause blocks activation triggers but leaves an in-flight session and its
+/// stop path intact (UX.md 7 "pause Verbatim").
+#[tokio::test]
+async fn pause_blocks_start_and_resume_restores_it() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let (handle, _events) = spawn_runner(injector.clone());
+
+    handle.set_paused(true).await.unwrap();
+    assert!(handle.status().await.unwrap().paused);
+
+    // Paused: Start is a no-op, the session never leaves Idle.
+    handle.trigger(Trigger::Start).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+
+    // Resume: the same trigger now records and injects.
+    handle.set_paused(false).await.unwrap();
+    handle.trigger(Trigger::Start).await.unwrap();
+    assert_eq!(
+        handle.status().await.unwrap().state,
+        SessionState::Recording
+    );
+    handle.trigger(Trigger::Stop).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+    assert_eq!(injector.injected_texts(), vec!["hello from verbatim"]);
+}
+
 /// Total failure: not even the clipboard fallback could stage the text. The
 /// failure must surface (E4), never a silent success.
 #[tokio::test]
