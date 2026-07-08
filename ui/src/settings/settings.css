@@ -221,6 +221,22 @@ body {
   font-weight: 600;
 }
 
+.models__attribution {
+  color: var(--muted);
+  font-size: 0.8em;
+}
+
+.settings__attributions {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
 .models__progress {
   width: 200px;
   height: 6px;

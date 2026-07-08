@@ -44,6 +44,9 @@ export interface ManagedModel {
   installed: boolean;
   onDiskBytes: number | null;
   isDefault: boolean;
+  license: string;
+  attribution: string;
+  recommended: boolean;
 }
 
 export const listModels = () => invoke<ManagedModel[]>("models_list");
