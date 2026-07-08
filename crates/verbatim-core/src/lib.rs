@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod dictionary;
 pub mod error;
 pub mod event;
 pub mod hotkey;
