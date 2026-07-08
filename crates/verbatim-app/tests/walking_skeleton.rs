@@ -384,6 +384,43 @@ async fn polish_rejection_degrades_to_raw_never_blocks() {
 }
 
 #[tokio::test]
+async fn over_edited_polish_trips_similarity_guard_and_degrades_to_raw() {
+    let injector = Arc::new(FakeTextInjector::default());
+    // The engine returns clean text, but it strayed far from the raw
+    // transcript (rewording drift) - the caller-side guard must reject it.
+    let (handle, mut events) = spawn_runner_with(
+        injector.clone(),
+        polished_config(),
+        loaded_polish_with(FakePolishBehavior::Fixed(
+            "The weather is sunny today and you have three meetings scheduled.".to_owned(),
+        )),
+    );
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+    assert_eq!(
+        injector.injected_texts(),
+        vec!["hello from verbatim".to_owned()],
+        "polish that trips the similarity guard falls back to raw"
+    );
+    // Records raw-only: guarded-out polish is not history.
+    let recorded = drain(&mut events)
+        .iter()
+        .find_map(|event| match event {
+            Event::DictationRecorded { raw, polished, .. } => Some((raw.clone(), polished.clone())),
+            _ => None,
+        })
+        .expect("DictationRecorded must be published");
+    assert_eq!(recorded.0, "hello from verbatim");
+    assert_eq!(
+        recorded.1, None,
+        "guarded-out polish records no polished text"
+    );
+}
+
+#[tokio::test]
 async fn toggle_drives_a_full_start_stop_cycle() {
     let injector = Arc::new(FakeTextInjector::default());
     let (handle, _events) = spawn_runner(injector.clone());
