@@ -45,10 +45,11 @@ impl HotkeyModeConfig {
 /// The full user config. One annotated `Default` is the single source of every
 /// default (ARCHITECTURE.md 4.8).
 ///
-/// ponytail: per-app profiles + personal dictionary (UX.md 5.3) are deferred to
-/// a follow-up slice - the Settings tabs function without them, and they carry
-/// their own confirm-flow UX. Add a `profiles`/`dictionary` field here when that
-/// slice lands.
+/// ponytail: per-app profiles (UX.md 5.1) are still deferred to Phase D - add a
+/// `profiles` field here when that slice lands. The personal dictionary is
+/// present below; auto-learn + its one-click confirm flow wait on an auto-learn
+/// source (still an open question), so for now every term is user-added and
+/// applies as soon as it is saved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -69,6 +70,10 @@ pub struct Config {
     pub history_retention_days: u32,
     /// File-log verbosity (`tracing` directive: error/warn/info/debug/trace).
     pub log_level: String,
+    /// Personal-dictionary terms in canonical casing (UX.md 5.3). Fed to the
+    /// polish prompt and re-applied as a deterministic post-pass over the injected
+    /// text, so a term like `PCM` never depends on the LLM alone.
+    pub dictionary: Vec<String>,
 }
 
 impl Default for Config {
@@ -83,6 +88,7 @@ impl Default for Config {
             polish: true,
             history_retention_days: 7,
             log_level: "info".to_owned(),
+            dictionary: Vec::new(),
         }
     }
 }
@@ -281,6 +287,7 @@ mod tests {
             polish: false,
             history_retention_days: 0,
             transcription_model: Some("whisper-small.en".to_owned()),
+            dictionary: vec!["PCM".to_owned(), "gRPC".to_owned()],
             ..Config::default()
         };
         save_to(&dir, &config).expect("save");

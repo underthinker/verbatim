@@ -156,6 +156,41 @@ async fn hotkey_to_injected_text_happy_path() {
     assert_eq!(recorded, ("hello from verbatim".to_owned(), None));
 }
 
+/// The personal-dictionary post-pass re-cases confirmed terms in the injected
+/// text deterministically, independent of the LLM - here on the raw path, where
+/// no polish ran at all (UX.md 5.3). The recorded `raw` stays the verbatim
+/// transcript; only the injected text carries the canonical casing.
+#[tokio::test]
+async fn dictionary_recases_terms_in_injected_text() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let config = RunnerConfig {
+        dictionary: vec!["Verbatim".to_owned()],
+        ..RunnerConfig::default()
+    };
+    let (handle, mut events) = spawn_runner_with(injector.clone(), config, loaded_polish());
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+
+    assert_eq!(
+        injector.injected_texts(),
+        vec!["hello from Verbatim".to_owned()],
+        "the dictionary post-pass must re-case the term in what actually lands"
+    );
+    let recorded = drain(&mut events)
+        .iter()
+        .find_map(|event| match event {
+            Event::DictationRecorded { raw, .. } => Some(raw.clone()),
+            _ => None,
+        })
+        .expect("a DictationRecorded event must be published");
+    assert_eq!(
+        recorded, "hello from verbatim",
+        "history keeps the verbatim transcript; only injection is re-cased"
+    );
+}
+
 /// Pause blocks activation triggers but leaves an in-flight session and its
 /// stop path intact (UX.md 7 "pause Verbatim").
 #[tokio::test]
