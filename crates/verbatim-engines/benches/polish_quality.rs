@@ -50,8 +50,13 @@ const TRANSCRIPTS: &[&str] = &[
 ];
 
 /// A polish generation is never allowed to self-reject in the bench: we measure
-/// true wall time, so the deadline is far above any real budget.
-const BENCH_DEADLINE: Duration = Duration::from_secs(60);
+/// true wall time, so the deadline is far above any real budget. Sized for the
+/// slowest supported runner - virtualized macOS CI has no Metal and runs with
+/// `GGML_NO_I8MM=1`, so a single CPU polish there is orders slower than the
+/// ~115 ms reference-hardware p50. Latency regressions are gated separately via
+/// the per-runner p50/p95 baseline; this deadline only guards against false
+/// self-rejection. ponytail: bump if an even slower runner trips it.
+const BENCH_DEADLINE: Duration = Duration::from_secs(300);
 const DEFAULT_ITERATIONS: usize = 5;
 const REGRESSION_LIMIT: f64 = 1.20;
 
