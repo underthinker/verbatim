@@ -12,6 +12,8 @@ pub mod model;
 mod polish;
 pub mod prompts;
 mod registry;
+#[cfg(feature = "sherpa-onnx")]
+mod sherpa;
 mod transcribe;
 mod types;
 #[cfg(feature = "whisper-cpp")]
@@ -21,6 +23,8 @@ mod whisper;
 pub use llama::LlamaPolishEngine;
 pub use polish::PolishEngine;
 pub use registry::EngineRegistry;
+#[cfg(feature = "sherpa-onnx")]
+pub use sherpa::SherpaOnnxEngine;
 pub use transcribe::TranscriptionEngine;
 pub use types::*;
 #[cfg(feature = "whisper-cpp")]
