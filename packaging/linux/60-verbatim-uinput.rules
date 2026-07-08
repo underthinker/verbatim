@@ -1,0 +1,11 @@
+# Verbatim: grant the active desktop session write access to /dev/uinput so the
+# uinput text-injection backend (spike 1) works without root or a re-login.
+#
+# TAG+="uaccess" hands the device to whoever owns the current logind seat via
+# systemd-logind ACLs - session-scoped, revoked on logout, no static `input`
+# group membership required (which would grant every input device, not just
+# uinput, and persist across sessions). OPTIONS+="static_node" ensures the ACL
+# is applied even when the uinput module is loaded after udev has settled.
+#
+# Installed to /etc/udev/rules.d/60-verbatim-uinput.rules by install-udev-rule.sh.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

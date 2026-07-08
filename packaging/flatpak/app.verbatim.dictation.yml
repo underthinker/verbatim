@@ -1,0 +1,61 @@
+# Flatpak manifest for Verbatim.
+#
+# Build strategy: repackage the release .deb (the tauri bundler already emits it
+# for the linux-x64 target) rather than rebuilding Rust+node inside the sandbox.
+# channels.yml fills __VERSION__ / __DEB_SHA256__ from the published release and
+# opens the PR against the Flathub app repo.
+#
+# NOTE: Flathub's own review may require converting the `verbatim` module to a
+# build-from-source module (offline cargo + node vendoring). This deb-repackage
+# form is correct for our self-hosted flatpak repo and as the submission
+# starting point. Keep the finish-args identical if you convert it.
+#
+# Portal-clean (spike 1): text injection goes through the RemoteDesktop portal
+# (libei), so NO --device=all and NO --filesystem=host. The uinput fallback is
+# intentionally unavailable inside the sandbox; the portal path is the Flatpak
+# story. The bundled udev helper only matters for the AppImage/host install.
+app-id: app.verbatim.dictation
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: verbatim
+
+finish-args:
+  # Webview UI.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Microphone capture (PipeWire, with PulseAudio compat).
+  - --socket=pulseaudio
+  # Text injection + global hotkeys go through xdg-desktop-portal
+  # (RemoteDesktop / GlobalShortcuts), which is reachable by default - no extra
+  # talk-name and no raw input-device access. This is the Flatpak-clean path.
+
+modules:
+  - name: verbatim
+    buildsystem: simple
+    build-commands:
+      # Extract the prebuilt .deb into the Flatpak prefix.
+      - ar x verbatim.deb
+      - tar -xf data.tar.* -C .
+      # tauri's .deb installs under /usr; relocate into the Flatpak /app prefix.
+      - install -Dm755 usr/bin/verbatim /app/bin/verbatim
+      - install -Dm644 usr/share/applications/*.desktop
+          /app/share/applications/app.verbatim.dictation.desktop
+      - |
+        for px in 32 128 256 512; do
+          src="usr/share/icons/hicolor/${px}x${px}/apps"
+          [ -d "$src" ] && install -Dm644 "$src"/*.png \
+            "/app/share/icons/hicolor/${px}x${px}/apps/app.verbatim.dictation.png" || true
+        done
+      - install -Dm644 app.verbatim.dictation.metainfo.xml
+          /app/share/metainfo/app.verbatim.dictation.metainfo.xml
+    sources:
+      - type: file
+        path: app.verbatim.dictation.metainfo.xml
+      - type: file
+        # channels.yml rewrites url + sha256 to the published .deb asset.
+        url: https://github.com/underthinker/verbatim/releases/download/v__VERSION__/Verbatim___VERSION___amd64.deb
+        sha256: __DEB_SHA256__
+        dest-filename: verbatim.deb

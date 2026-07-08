@@ -1,0 +1,28 @@
+# Default-locale manifest.
+PackageIdentifier: Underthinker.Verbatim
+PackageVersion: __VERSION__
+PackageLocale: en-US
+Publisher: Underthinker
+PublisherUrl: https://github.com/underthinker
+PublisherSupportUrl: https://github.com/underthinker/verbatim/issues
+PackageName: Verbatim
+PackageUrl: https://github.com/underthinker/verbatim
+License: MIT
+LicenseUrl: https://github.com/underthinker/verbatim/blob/main/LICENSE
+Copyright: Copyright (c) 2026 Verbatim contributors
+ShortDescription: Privacy-first, fully local dictation - hotkey to polished text, no cloud.
+Description: >-
+  Verbatim is a cross-platform, privacy-first, fully local dictation app. Press
+  a hotkey, speak, and get polished text injected into any app, with zero cloud
+  dependency. Transcription and polish run entirely on-device.
+Moniker: verbatim
+Tags:
+  - dictation
+  - speech-to-text
+  - transcription
+  - accessibility
+  - privacy
+  - offline
+  - local
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

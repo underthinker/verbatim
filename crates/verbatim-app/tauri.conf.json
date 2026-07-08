@@ -39,6 +39,20 @@
     "windows": {
       "digestAlgorithm": "sha256",
       "timestampUrl": "http://timestamp.digicert.com"
+    },
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/share/verbatim/60-verbatim-uinput.rules": "../../packaging/linux/60-verbatim-uinput.rules",
+          "/usr/share/verbatim/install-udev-rule.sh": "../../packaging/linux/install-udev-rule.sh"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/verbatim/60-verbatim-uinput.rules": "../../packaging/linux/60-verbatim-uinput.rules",
+          "/usr/share/verbatim/install-udev-rule.sh": "../../packaging/linux/install-udev-rule.sh"
+        }
+      }
     }
   }
 }

@@ -1,0 +1,8 @@
+# Version manifest. Template: channels.yml substitutes __VERSION__ from the tag,
+# copies the three files into a winget-pkgs fork under
+# manifests/u/Underthinker/Verbatim/<version>/, and opens the PR.
+PackageIdentifier: Underthinker.Verbatim
+PackageVersion: __VERSION__
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0
