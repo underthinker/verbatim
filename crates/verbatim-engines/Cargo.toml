@@ -47,6 +47,11 @@ name = "latency"
 harness = false
 required-features = ["whisper-cpp"]
 
+[[bench]]
+name = "polish_quality"
+harness = false
+required-features = ["llama-cpp"]
+
 [features]
 # Real engine implementations land during M1 wire-up (ARCHITECTURE.md 4.2/4.3).
 whisper-cpp = ["dep:whisper-rs"]

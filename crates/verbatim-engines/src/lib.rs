@@ -4,11 +4,13 @@
 //! Real implementations (whisper.cpp, sherpa-onnx, llama.cpp) are feature-gated
 //! and land during M1 wire-up; see ARCHITECTURE.md sections 4.2 and 4.3.
 
+pub mod calibration;
 pub mod fake;
 #[cfg(feature = "llama-cpp")]
 mod llama;
 pub mod model;
 mod polish;
+pub mod prompts;
 mod registry;
 mod transcribe;
 mod types;
