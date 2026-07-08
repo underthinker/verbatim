@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
 use verbatim_core::event::{Event, EventBus};
-use verbatim_core::runner::{RunnerConfig, RunnerHandle, SessionRunner};
+use verbatim_core::runner::{RunnerHandle, SessionRunner};
 use verbatim_engines::fake::FakeModelDownloader;
 use verbatim_platform::AccessibilityAnnouncer;
 #[cfg(not(all(feature = "real-injection", target_os = "macos")))]
@@ -138,17 +138,24 @@ fn settings_get() -> Config {
     Config::load()
 }
 
-/// Validate + persist a full config from the Settings webview (UX.md 7). The
-/// hotkey is conflict-checked before anything is written; an invalid chord is
-/// rejected whole so the file never holds a chord the runner cannot bind.
+/// Validate + persist a full config from the Settings webview (UX.md 7), then
+/// re-apply it to the running runner live (Phase D). The hotkey is
+/// conflict-checked before anything is written; an invalid chord is rejected
+/// whole so the file never holds a chord the runner cannot bind.
 ///
-/// ponytail: this persists only - live re-apply of hotkey mode / model to the
-/// running runner takes effect on next launch. Wire a runner reconfigure
-/// command when in-session rebinding is needed.
+/// The polish toggle, personal dictionary, and per-app profiles take effect on
+/// the next dictation without a restart. Hotkey mode / model changes still apply
+/// on next launch: those are owned by the OS hotkey registration and the engine
+/// loaders, not the runner's pipeline knobs.
 #[tauri::command]
-fn settings_set(config: Config) -> Result<(), String> {
+async fn settings_set(state: tauri::State<'_, Shell>, config: Config) -> Result<(), String> {
     Config::validate_hotkey(&config.hotkey).map_err(|err| err.to_string())?;
-    config.save().map_err(|err| err.to_string())
+    config.save().map_err(|err| err.to_string())?;
+    state
+        .handle
+        .reconfigure(config.to_runner_config())
+        .await
+        .map_err(|_| "runner stopped".to_owned())
 }
 
 /// Validate a proposed hotkey chord without persisting (live conflict check as
@@ -316,9 +323,11 @@ fn spawn_history_recorder(history: Arc<History>, events: &EventBus) {
 /// the headless daemon).
 pub fn run() -> ExitCode {
     let events = Arc::new(EventBus::default());
-    let (runner, handle) = SessionRunner::new(daemon::build_deps(), RunnerConfig::default(), {
-        Arc::clone(&events)
-    });
+    let (runner, handle) = SessionRunner::new(
+        daemon::build_deps(),
+        Config::load().to_runner_config(),
+        Arc::clone(&events),
+    );
     tauri::async_runtime::spawn(runner.run());
 
     // Keep the trigger socket alive so CLI triggers and native shortcut

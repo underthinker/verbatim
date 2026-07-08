@@ -296,6 +296,21 @@ body {
   font: inherit;
 }
 
+.settings__dictionary-add select {
+  padding: 8px 10px;
+  border: 1px solid var(--track);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+}
+
+/* The per-app profile row carries a long app id, a profile select, and the add
+   button, so it needs more room than the single-input dictionary row. */
+.settings__profile-add {
+  max-width: 460px;
+}
+
 .settings__dictionary-add button {
   padding: 6px 14px;
   border: 1px solid var(--track);

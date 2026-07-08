@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 
 use verbatim_core::event::EventBus;
-use verbatim_core::runner::{RunnerConfig, RunnerDeps, RunnerHandle, SessionRunner};
+use verbatim_core::runner::{RunnerDeps, RunnerHandle, SessionRunner};
 use verbatim_engines::fake::{FakePolishBehavior, FakePolishEngine, FakeTranscriptionEngine};
 use verbatim_engines::{
     AudioBuffer, EngineOptions, ModelHandle, PIPELINE_SAMPLE_RATE_HZ, PolishEngine,
@@ -20,6 +20,7 @@ use verbatim_engines::{
 use verbatim_platform::fake::{FakeAudioCapture, FakeFocusTracker, FakeTextInjector};
 
 use crate::ipc::{Request, Response};
+use crate::settings::Config;
 use crate::transport;
 
 /// Build the fake pipeline the Phase 1 daemon runs on. Every seam is a
@@ -59,7 +60,8 @@ fn fake_model() -> ModelHandle {
 // still the entry for every other platform/feature combination and the tests.
 #[cfg_attr(all(feature = "global-hotkey", target_os = "macos"), allow(dead_code))]
 pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
-    let (runner, handle) = SessionRunner::new(build_deps(), RunnerConfig::default(), events);
+    let (runner, handle) =
+        SessionRunner::new(build_deps(), Config::load().to_runner_config(), events);
     tokio::spawn(runner.run());
 
     // Phase 6: GlobalShortcuts-portal hotkey (spike 1). Unlike the macOS
@@ -222,11 +224,20 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
         }
     });
 
-    let (runner, handle) = SessionRunner::new(build_deps(), RunnerConfig::default(), events);
+    let (runner, handle) =
+        SessionRunner::new(build_deps(), Config::load().to_runner_config(), events);
     runtime.spawn(runner.run());
 
     // Edges cross from the main-thread run loop into tokio here; the semantics
     // task turns raw edges into triggers and drives the runner.
+    //
+    // ponytail: the raw-mode modifier (UX.md 5.1) plugs in right here - the
+    // runner already honours it via `handle.set_raw_override(true)` before a
+    // Start (see `SessionRunner`, covered by a walking-skeleton E2E). What is
+    // missing is the modifier-flag read at the press edge: `HotkeyEvent` only
+    // carries Pressed/Released, so the backend must report whether the raw
+    // modifier (default Shift) was co-held. Wire that when the per-OS hotkey
+    // backends grow modifier-state reporting; the core seam is done.
     let (edge_tx, mut edge_rx) = tokio::sync::mpsc::unbounded_channel();
     {
         let handle = handle.clone();
@@ -490,6 +501,8 @@ fn state_token(state: verbatim_core::session::SessionState) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use verbatim_core::runner::RunnerConfig;
 
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU32, Ordering};

@@ -17,6 +17,8 @@ export interface Config {
   history_retention_days: number;
   log_level: string;
   dictionary: string[];
+  /** Per-app polish profile: frontmost app id -> profile id. `"raw"` forces raw. */
+  profiles: Record<string, string>;
 }
 
 export const getConfig = () => invoke<Config>("settings_get");

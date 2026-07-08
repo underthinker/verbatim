@@ -21,6 +21,7 @@ use verbatim_engines::{
     AudioBuffer, EngineOptions, ModelHandle, PIPELINE_SAMPLE_RATE_HZ, PolishEngine,
     TranscriptionEngine,
 };
+use verbatim_platform::FocusedApp;
 use verbatim_platform::fake::{
     FakeAudioCapture, FakeFocusTracker, FakeInjectionOutcome, FakeTextInjector,
 };
@@ -67,6 +68,17 @@ fn spawn_runner_with(
     config: RunnerConfig,
     polish: FakePolishEngine,
 ) -> (RunnerHandle, broadcast::Receiver<Event>) {
+    spawn_runner_focused(injector, config, polish, FakeFocusTracker::default())
+}
+
+/// As [`spawn_runner_with`], but with a caller-supplied focus tracker so per-app
+/// profile selection can be exercised (the frontmost app id drives it).
+fn spawn_runner_focused(
+    injector: Arc<FakeTextInjector>,
+    config: RunnerConfig,
+    polish: FakePolishEngine,
+    focus: FakeFocusTracker,
+) -> (RunnerHandle, broadcast::Receiver<Event>) {
     let events = Arc::new(EventBus::default());
     let receiver = events.subscribe();
     let deps = RunnerDeps {
@@ -74,11 +86,20 @@ fn spawn_runner_with(
         transcription: Box::new(loaded_asr("hello from verbatim")),
         polish: Box::new(polish),
         injector: Box::new(injector),
-        focus: Box::new(FakeFocusTracker::default()),
+        focus: Box::new(focus),
     };
     let (runner, handle) = SessionRunner::new(deps, config, events);
     tokio::spawn(runner.run());
     (handle, receiver)
+}
+
+fn focused_on(app_id: &str) -> FakeFocusTracker {
+    let focus = FakeFocusTracker::default();
+    focus.set_focused(FocusedApp {
+        app_id: app_id.to_owned(),
+        window_title: None,
+    });
+    focus
 }
 
 fn polished_config() -> RunnerConfig {
@@ -452,6 +473,135 @@ async fn over_edited_polish_trips_similarity_guard_and_degrades_to_raw() {
     assert_eq!(
         recorded.1, None,
         "guarded-out polish records no polished text"
+    );
+}
+
+/// Per-app profiles (UX.md 5.1): a terminal is frontmost at target time, so
+/// polish is skipped and the raw transcript lands even though polish is enabled
+/// globally. The default-profile app (`polished_mode_injects_polished_text`
+/// above) proves the other side of the branch.
+#[tokio::test]
+async fn terminal_app_forces_raw_even_with_polish_enabled() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let (handle, mut events) = spawn_runner_focused(
+        injector.clone(),
+        polished_config(),
+        loaded_polish_with(FakePolishBehavior::Fixed("polished output".to_owned())),
+        focused_on("com.apple.Terminal"),
+    );
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+    assert_eq!(
+        injector.injected_texts(),
+        vec!["hello from verbatim".to_owned()],
+        "a terminal defaults to raw; polished text must not land there"
+    );
+    // Never entered Polishing: the profile forced raw before the polish step.
+    assert_eq!(
+        transition_targets(&drain(&mut events)),
+        vec![
+            SessionState::Arming,
+            SessionState::Recording,
+            SessionState::Finalizing,
+            SessionState::Transcribing,
+            SessionState::Injecting,
+            SessionState::Idle,
+        ]
+    );
+}
+
+/// An explicit per-app `raw` assignment forces raw on an app that would
+/// otherwise be polished (UX.md 5.1).
+#[tokio::test]
+async fn explicit_raw_profile_forces_raw() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let mut config = polished_config();
+    config
+        .profiles
+        .insert("com.example.editor".to_owned(), "raw".to_owned());
+    let (handle, _events) = spawn_runner_focused(
+        injector.clone(),
+        config,
+        loaded_polish_with(FakePolishBehavior::Fixed("polished output".to_owned())),
+        focused_on("com.example.editor"),
+    );
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+    assert_eq!(
+        injector.injected_texts(),
+        vec!["hello from verbatim".to_owned()],
+        "an app assigned the raw profile injects raw, not polished"
+    );
+}
+
+/// The raw-mode modifier (UX.md 5.1): `set_raw_override(true)` forces raw for the
+/// next dictation regardless of profile or global polish, then is consumed - the
+/// dictation after it polishes again.
+#[tokio::test]
+async fn raw_mode_modifier_forces_raw_for_one_dictation_then_clears() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let (handle, _events) = spawn_runner_with(
+        injector.clone(),
+        polished_config(),
+        loaded_polish_with(FakePolishBehavior::Fixed("polished output".to_owned())),
+    );
+
+    // Modifier held: this dictation must inject raw.
+    handle.set_raw_override(true).await.unwrap();
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+
+    // Modifier released: the next dictation polishes normally.
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+
+    assert_eq!(
+        injector.injected_texts(),
+        vec![
+            "hello from verbatim".to_owned(),
+            "polished output".to_owned()
+        ],
+        "raw modifier forces raw once, then clears so polish resumes"
+    );
+}
+
+/// Live reconfigure (Phase D): a `reconfigure` mid-session flips the polish
+/// toggle for the next dictation without a restart.
+#[tokio::test]
+async fn reconfigure_applies_polish_toggle_to_the_next_dictation() {
+    let injector = Arc::new(FakeTextInjector::default());
+    // Start with polish off (default): first dictation is raw.
+    let (handle, _events) = spawn_runner_with(
+        injector.clone(),
+        RunnerConfig::default(),
+        loaded_polish_with(FakePolishBehavior::Fixed("polished output".to_owned())),
+    );
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+
+    // Turn polish on live; the second dictation must now polish.
+    handle.reconfigure(polished_config()).await.unwrap();
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+
+    assert_eq!(
+        injector.injected_texts(),
+        vec![
+            "hello from verbatim".to_owned(),
+            "polished output".to_owned()
+        ],
+        "reconfigure must apply to the next dictation without a restart"
     );
 }
 
