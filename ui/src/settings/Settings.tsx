@@ -15,7 +15,6 @@ export default function Settings() {
   const [tab, setTab] = useState<Tab>("General");
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [newTerm, setNewTerm] = useState("");
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Roving arrow-key navigation between tabs (WAI-ARIA tablist, UX.md 8).
@@ -42,16 +41,6 @@ export default function Settings() {
     setLocal({ ...config, ...next });
     setSaved(false);
   };
-
-  const addTerm = () => {
-    const term = newTerm.trim();
-    if (term === "" || config.dictionary.includes(term)) return;
-    patch({ dictionary: [...config.dictionary, term] });
-    setNewTerm("");
-  };
-
-  const removeTerm = (term: string) =>
-    patch({ dictionary: config.dictionary.filter((t) => t !== term) });
 
   const onHotkey = (chord: string) => {
     patch({ hotkey: chord });
@@ -159,54 +148,6 @@ export default function Settings() {
               <span>Polish model</span>
               <strong>{config.polish_model ?? "None selected"}</strong>
             </p>
-            <fieldset className="settings__field">
-              <legend>Personal dictionary</legend>
-              <p className="settings__hint">
-                Terms forced to this exact casing in every dictation, whether polished
-                or raw.
-              </p>
-              {config.dictionary.length === 0 ? (
-                <p className="settings__hint">No terms yet.</p>
-              ) : (
-                <ul className="settings__dictionary">
-                  {config.dictionary.map((term) => (
-                    <li key={term} className="settings__dictionary-item">
-                      <span>{term}</span>
-                      <button
-                        type="button"
-                        className="settings__dictionary-remove"
-                        onClick={() => removeTerm(term)}
-                        aria-label={`Remove ${term}`}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="settings__dictionary-add">
-                <input
-                  type="text"
-                  value={newTerm}
-                  placeholder="e.g. PCM"
-                  aria-label="New dictionary term"
-                  onChange={(e) => setNewTerm(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addTerm();
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={addTerm}
-                  disabled={newTerm.trim() === ""}
-                >
-                  Add
-                </button>
-              </div>
-            </fieldset>
           </>
         )}
 

@@ -16,7 +16,6 @@ export interface Config {
   polish: boolean;
   history_retention_days: number;
   log_level: string;
-  dictionary: string[];
 }
 
 export const getConfig = () => invoke<Config>("settings_get");
