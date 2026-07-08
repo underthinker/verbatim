@@ -79,6 +79,10 @@ pub struct Config {
     /// (UX.md 5.1). The reserved id `raw` forces raw injection for that app;
     /// terminals default to raw even without an entry. Empty by default.
     pub profiles: BTreeMap<String, String>,
+    /// Polish deadline in milliseconds, measured per machine by the onboarding
+    /// calibration micro-benchmark (M3 Phase E). `None` uses the built-in default
+    /// until the machine is calibrated.
+    pub polish_deadline_ms: Option<u32>,
 }
 
 impl Default for Config {
@@ -95,6 +99,7 @@ impl Default for Config {
             log_level: "info".to_owned(),
             dictionary: Vec::new(),
             profiles: BTreeMap::new(),
+            polish_deadline_ms: None,
         }
     }
 }
@@ -116,7 +121,10 @@ impl Config {
             polish: self.polish,
             dictionary: self.dictionary.clone(),
             profiles: self.profiles.clone(),
-            ..RunnerConfig::default()
+            polish_deadline: self
+                .polish_deadline_ms
+                .map(|ms| std::time::Duration::from_millis(u64::from(ms)))
+                .unwrap_or(RunnerConfig::default().polish_deadline),
         }
     }
 
@@ -325,6 +333,7 @@ mod tests {
             polish: true,
             dictionary: vec!["PCM".to_owned()],
             profiles: BTreeMap::from([("com.apple.Terminal".to_owned(), "raw".to_owned())]),
+            polish_deadline_ms: Some(640),
             ..Config::default()
         };
         let runner = config.to_runner_config();
@@ -336,6 +345,20 @@ mod tests {
                 .get("com.apple.Terminal")
                 .map(String::as_str),
             Some("raw")
+        );
+        // Calibrated deadline projects through; None would keep the default.
+        assert_eq!(
+            runner.polish_deadline,
+            std::time::Duration::from_millis(640)
+        );
+    }
+
+    #[test]
+    fn uncalibrated_deadline_keeps_the_runner_default() {
+        let runner = Config::default().to_runner_config();
+        assert_eq!(
+            runner.polish_deadline,
+            RunnerConfig::default().polish_deadline
         );
     }
 

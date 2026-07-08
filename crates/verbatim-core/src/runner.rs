@@ -419,15 +419,18 @@ impl SessionRunner {
         }
     }
 
-    /// Build the [`PolishProfile`] for a selected profile id. Prompt/few-shot
-    /// content stays empty until the versioned asset loader lands (Phase E); the
-    /// personal dictionary is fed through so it reaches the prompt (ARCHITECTURE.md
-    /// 4.3) in addition to the deterministic post-pass.
+    /// Build the [`PolishProfile`] for a selected profile id. System prompt and
+    /// few-shot come from the versioned asset for that id (Phase E); a profile id
+    /// with no shipped asset polishes with an empty template. The personal
+    /// dictionary is fed through so it reaches the prompt (ARCHITECTURE.md 4.3) in
+    /// addition to the deterministic post-pass.
     fn polish_profile(&self, id: String) -> PolishProfile {
+        let content = verbatim_engines::prompts::load(&id).unwrap_or_default();
         PolishProfile {
             id,
+            system_prompt: content.system_prompt,
+            few_shot: content.few_shot,
             dictionary: self.config.dictionary.clone(),
-            ..PolishProfile::default()
         }
     }
 

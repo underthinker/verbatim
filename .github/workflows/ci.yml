@@ -215,3 +215,61 @@ jobs:
           VERBATIM_BENCH_REQUIRE: 1
           VERBATIM_BENCH_BASELINE: ${{ matrix.os }}
           VERBATIM_BENCH_MAX_P50_MS: ${{ matrix.budget_ms }}
+
+  polish-bench:
+    name: Polish quality bench (${{ matrix.os }})
+    # Main pipeline only, like the latency bench: PRs stay fast, prompt/engine
+    # regressions are caught on merge. The similarity-guard and latency gates run
+    # here; the exact-expectation golden is armed on reference hardware (a
+    # committed golden), since greedy output is model-build specific.
+    if: github.event_name != 'pull_request'
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Cache polish model
+        id: model-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/polish-models
+          key: qwen2.5-0.5b-instruct-q4km
+      - name: Download polish model (best effort)
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        shell: bash
+        # Tolerant download: an unavailable model URL must not redden main. The
+        # bench skips cleanly when the file is absent (see the run step), so the
+        # gate degrades to a no-op rather than a failure on infra trouble.
+        run: |
+          mkdir -p ~/polish-models
+          curl -sSfL -o ~/polish-models/polish.gguf \
+            https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+            || echo "polish model download failed; bench will skip"
+      - name: Run polish bench
+        shell: bash
+        # Retry once for noisy-neighbour slowness, like the latency bench. Only
+        # set VERBATIM_POLISH_MODEL when the file is actually present so a failed
+        # download degrades to a clean skip instead of a hard failure.
+        run: |
+          MODEL="$HOME/polish-models/polish.gguf"
+          if [ ! -s "$MODEL" ]; then
+            echo "no polish model present; skipping polish bench"
+            exit 0
+          fi
+          for attempt in 1 2; do
+            if VERBATIM_POLISH_MODEL="$MODEL" \
+              cargo bench --locked -p verbatim-engines --features llama-cpp --bench polish_quality; then
+              exit 0
+            fi
+            echo "polish bench attempt ${attempt} failed"
+          done
+          exit 1
+        env:
+          GGML_NO_I8MM: 1
+          VERBATIM_BENCH_BASELINE: ${{ matrix.os }}

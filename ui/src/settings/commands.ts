@@ -19,6 +19,11 @@ export interface Config {
   dictionary: string[];
   /** Per-app polish profile: frontmost app id -> profile id. `"raw"` forces raw. */
   profiles: Record<string, string>;
+  /**
+   * Per-machine polish deadline in ms, set by onboarding calibration. Not
+   * user-edited here; carried through unchanged so a settings save never wipes it.
+   */
+  polish_deadline_ms: number | null;
 }
 
 export const getConfig = () => invoke<Config>("settings_get");
