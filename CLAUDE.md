@@ -21,7 +21,7 @@ Before shipping, run the local checks: `cargo fmt`, `cargo clippy --all-targets 
 
 ### Ship flow delegation
 
-Once the code is clean, delegate the **entire ship tail to Haiku**: push branch, open the PR, babysit CI until green, merge (squash + delete branch). Opus does not push/PR/merge itself. If CI fails on something other than known-flaky `latency bench (macos-latest)`, Haiku stops and reports back for Opus to fix.
+Once code is clean, delegate **only** to Haiku: push branch, open PR, stop. No CI babysitting, no merge. Haiku returns the PR URL and nothing else. Opus does not push/PR. You review CI and squash-merge manually.
 
 ## Source of truth
 
