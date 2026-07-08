@@ -124,9 +124,11 @@ Verification: a dogfood tester can resolve a permission error from the docs alon
 
 Dependency order: Phase 0 and A first (0 unblocks E's cross-platform gate, A unblocks everything downstream). B after A. C and D parallel with B. E starts the moment B produces installable channel builds and runs >= 2 weeks. F parallel with E, done before E's testers need troubleshooting docs. Sign-off last.
 
-## Open questions to resolve at kickoff
+## Kickoff decisions (resolved 2026-07-08)
 
-- Cert procurement timeline (Apple Developer program + Authenticode OV): human dependency, blocks Phase A's signed outputs.
-- Tester recruitment source and count per OS (>= 5 total, all three OSes covered).
-- Blind-panel mechanics: who scores (testers cross-score vs external raters) and the minimum sample count for an honest >= 80% claim.
-- Docs site tooling (plain mdBook vs the Tauri site stack) - pick the boring one that versions with the repo.
+- Certs: neither purchased yet.
+  Phase A lands the full pipeline against ad-hoc/unsigned artifacts with a loud unsigned warning; cert secrets get wired when issued.
+  Cert purchase (Apple Developer program + Authenticode OV) is Tristen's action item, tracked as a Phase A follow-up.
+- Testers: recruit from friends/colleagues plus online communities (dictation/accessibility subreddits, HN, Discord); >= 5 total covering macOS, Windows 11, Ubuntu 24.04.
+- Blind panel: testers cross-score each other's anonymized raw/polished pairs; target minimum ~50 pairs total for the >= 80% claim.
+- Docs site: Astro Starlight, versioned with the repo (node toolchain already present via `ui/`).
