@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metainfo, required by Flathub. The <releases> block's version +
+     date are updated by channels.yml (__VERSION__ / __RELEASE_DATE__) on each
+     published release. -->
+<component type="desktop-application">
+  <id>app.verbatim.dictation</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Verbatim</name>
+  <summary>Privacy-first, fully local dictation</summary>
+  <developer id="io.github.underthinker">
+    <name>Verbatim contributors</name>
+  </developer>
+
+  <description>
+    <p>
+      Verbatim is a cross-platform, privacy-first dictation app. Press a hotkey,
+      speak, and get polished text injected into whatever app you are using -
+      with zero cloud dependency.
+    </p>
+    <p>
+      Transcription and optional polishing run entirely on your machine. No audio
+      or text ever leaves the device; the only network access is the hash-verified
+      model downloader and the update channel.
+    </p>
+    <p>Text injection uses the RemoteDesktop portal (libei) - no host escape required.</p>
+  </description>
+
+  <launchable type="desktop-id">app.verbatim.dictation.desktop</launchable>
+  <content_rating type="oars-1.1" />
+
+  <url type="homepage">https://github.com/underthinker/verbatim</url>
+  <url type="bugtracker">https://github.com/underthinker/verbatim/issues</url>
+  <url type="vcs-browser">https://github.com/underthinker/verbatim</url>
+
+  <categories>
+    <category>Utility</category>
+    <category>Accessibility</category>
+  </categories>
+
+  <keywords>
+    <keyword>dictation</keyword>
+    <keyword>speech-to-text</keyword>
+    <keyword>transcription</keyword>
+    <keyword>offline</keyword>
+    <keyword>privacy</keyword>
+  </keywords>
+
+  <!-- Flathub requires at least one screenshot before acceptance. Add the M2
+       overlay/onboarding captures here once hosted (raw.githubusercontent URL). -->
+  <!--
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/underthinker/verbatim/main/docs/assets/overlay.png</image>
+      <caption>The dictation overlay</caption>
+    </screenshot>
+  </screenshots>
+  -->
+
+  <releases>
+    <release version="__VERSION__" date="__RELEASE_DATE__" />
+  </releases>
+</component>

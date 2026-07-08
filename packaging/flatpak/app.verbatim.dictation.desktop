@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Verbatim
+GenericName=Dictation
+Comment=Privacy-first, fully local dictation - hotkey to polished text, no cloud
+Exec=verbatim gui
+Icon=app.verbatim.dictation
+Terminal=false
+Categories=Utility;Accessibility;AudioVideo;
+Keywords=dictation;speech;transcription;voice;accessibility;offline;
+StartupNotify=true
+StartupWMClass=Verbatim

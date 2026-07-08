@@ -1,0 +1,209 @@
+name: Channels
+
+# Phase B distribution channels. When a NON-prerelease `v*` release is published
+# (i.e. the Release pipeline's draft has been promoted), this pushes updated
+# package manifests to each distribution channel and opens a PR there.
+#
+# Every channel self-guards on its token: absent secret => a loud ::warning::
+# annotation and a no-op, never a hard failure. Same degrade-loud contract as
+# the signing steps in release.yml - an unconfigured channel is skipped, not
+# broken, so this is safe on forks and before the tap/fork/Flathub repos exist.
+#
+# Target repos are repo VARIABLES (override per deployment); tokens are SECRETS.
+# The source-of-truth manifests live in packaging/; this workflow only fills
+# their version/hash tokens and opens the PRs. Edit the templates, not the copies.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: channels-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    name: Resolve version + checksums
+    # Stable channels only. A prerelease (v0.9.0-rc.1) must never reach
+    # Homebrew/winget/Flathub stable.
+    if: github.event.release.prerelease == false
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release_date: ${{ steps.v.outputs.release_date }}
+      arm64_sha: ${{ steps.sums.outputs.arm64_sha }}
+      x64_sha: ${{ steps.sums.outputs.x64_sha }}
+      msi_sha: ${{ steps.sums.outputs.msi_sha }}
+      deb_sha: ${{ steps.sums.outputs.deb_sha }}
+      ok: ${{ steps.sums.outputs.ok }}
+    steps:
+      - id: v
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "release_date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      - id: sums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          # SHA256SUMS is produced by release.yml's finalize job. Its absence
+          # means the release pipeline has not finished; skip all channels.
+          if ! gh release download "$TAG" --pattern SHA256SUMS --dir . 2>/dev/null; then
+            echo "::warning title=No SHA256SUMS::Release $TAG has no SHA256SUMS asset yet (finalize job incomplete?). Skipping all channel updates."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # ponytail: assumes the release artifact filenames carry the tag's
+          # version (Verbatim_<version>_*), i.e. tauri.conf version == tag. That
+          # is the documented release-config invariant (Phase A follow-up). If a
+          # version-matched asset is missing we warn + skip rather than publish a
+          # manifest that points at a 404. Upgrade path: version-check in release.yml.
+          sha_of() { awk -v f="$1" '$2==f || $2=="*"f {print $1}' SHA256SUMS | head -n1; }
+          ARM64=$(sha_of "Verbatim_${VERSION}_aarch64.dmg")
+          X64=$(sha_of "Verbatim_${VERSION}_x64.dmg")
+          MSI=$(sha_of "Verbatim_${VERSION}_x64_en-US.msi")
+          DEB=$(sha_of "Verbatim_${VERSION}_amd64.deb")
+          echo "arm64_sha=$ARM64" >> "$GITHUB_OUTPUT"
+          echo "x64_sha=$X64" >> "$GITHUB_OUTPUT"
+          echo "msi_sha=$MSI" >> "$GITHUB_OUTPUT"
+          echo "deb_sha=$DEB" >> "$GITHUB_OUTPUT"
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+          echo "Resolved sums for $VERSION: dmg-arm=$ARM64 dmg-x64=$X64 msi=$MSI deb=$DEB"
+
+  homebrew:
+    name: Homebrew cask PR
+    needs: meta
+    if: needs.meta.outputs.ok == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Update tap and open PR
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO || 'underthinker/homebrew-verbatim' }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          ARM64_SHA: ${{ needs.meta.outputs.arm64_sha }}
+          X64_SHA: ${{ needs.meta.outputs.x64_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAP_TOKEN:-}" ]; then
+            echo "::warning title=Homebrew channel skipped::HOMEBREW_TAP_TOKEN absent - not updating the $TAP_REPO tap. Set the secret (PAT with repo scope on the tap) to enable."
+            exit 0
+          fi
+          if [ -z "$ARM64_SHA" ] || [ -z "$X64_SHA" ]; then
+            echo "::warning title=Homebrew channel skipped::Missing a macOS .dmg checksum for $VERSION; not publishing a cask that would 404."
+            exit 0
+          fi
+          BR="verbatim-$VERSION"
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/${TAP_REPO}.git" tap
+          mkdir -p tap/Casks
+          sed -e "s/__VERSION__/$VERSION/g" \
+              -e "s/__ARM64_SHA256__/$ARM64_SHA/g" \
+              -e "s/__X64_SHA256__/$X64_SHA/g" \
+              packaging/homebrew/verbatim.rb > tap/Casks/verbatim.rb
+          cd tap
+          git config user.name Underthinker
+          git config user.email trstn.ngyn@gmail.com
+          git checkout -b "$BR"
+          git add Casks/verbatim.rb
+          git commit -m "verbatim $VERSION"
+          git push -u origin "$BR" --force
+          GH_TOKEN="$TAP_TOKEN" gh pr create --repo "$TAP_REPO" \
+            --head "$BR" --title "verbatim $VERSION" \
+            --body "Automated cask bump for Verbatim $VERSION (release ${{ github.event.release.tag_name }})."
+
+  winget:
+    name: winget manifest PR
+    needs: meta
+    if: needs.meta.outputs.ok == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Update winget fork and open PR
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          FORK_REPO: ${{ vars.WINGET_FORK_REPO || 'underthinker/winget-pkgs' }}
+          UPSTREAM: ${{ vars.WINGET_UPSTREAM_REPO || 'microsoft/winget-pkgs' }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          MSI_SHA: ${{ needs.meta.outputs.msi_sha }}
+          RELEASE_DATE: ${{ needs.meta.outputs.release_date }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WINGET_TOKEN:-}" ]; then
+            echo "::warning title=winget channel skipped::WINGET_TOKEN absent - not updating $FORK_REPO. Set the secret (PAT with repo scope on your winget-pkgs fork) to enable."
+            exit 0
+          fi
+          if [ -z "$MSI_SHA" ]; then
+            echo "::warning title=winget channel skipped::No .msi checksum for $VERSION (Windows build unsigned/absent?); not publishing a 404 manifest."
+            exit 0
+          fi
+          BR="verbatim-$VERSION"
+          DEST="manifests/u/Underthinker/Verbatim/$VERSION"
+          git clone "https://x-access-token:${WINGET_TOKEN}@github.com/${FORK_REPO}.git" fork
+          mkdir -p "fork/$DEST"
+          for f in packaging/winget/*.yaml; do
+            sed -e "s/__VERSION__/$VERSION/g" \
+                -e "s/__MSI_SHA256__/$MSI_SHA/g" \
+                -e "s/__RELEASE_DATE__/$RELEASE_DATE/g" \
+                "$f" > "fork/$DEST/$(basename "$f")"
+          done
+          cd fork
+          git config user.name Underthinker
+          git config user.email trstn.ngyn@gmail.com
+          git checkout -b "$BR"
+          git add "$DEST"
+          git commit -m "New version: Underthinker.Verbatim version $VERSION"
+          git push -u origin "$BR" --force
+          GH_TOKEN="$WINGET_TOKEN" gh pr create --repo "$UPSTREAM" \
+            --head "$(echo "$FORK_REPO" | cut -d/ -f1):$BR" \
+            --title "New version: Underthinker.Verbatim version $VERSION" \
+            --body "Automated manifest for Verbatim $VERSION (release ${{ github.event.release.tag_name }})."
+
+  flathub:
+    name: Flathub manifest PR
+    needs: meta
+    if: needs.meta.outputs.ok == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Update Flathub repo and open PR
+        env:
+          FLATHUB_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+          FLATHUB_REPO: ${{ vars.FLATHUB_REPO || 'flathub/app.verbatim.dictation' }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          DEB_SHA: ${{ needs.meta.outputs.deb_sha }}
+          RELEASE_DATE: ${{ needs.meta.outputs.release_date }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FLATHUB_TOKEN:-}" ]; then
+            echo "::warning title=Flathub channel skipped::FLATHUB_TOKEN absent - not updating $FLATHUB_REPO. Set the secret after the Flathub app repo is granted."
+            exit 0
+          fi
+          if [ -z "$DEB_SHA" ]; then
+            echo "::warning title=Flathub channel skipped::No .deb checksum for $VERSION; not publishing a manifest that would fail to build."
+            exit 0
+          fi
+          BR="verbatim-$VERSION"
+          git clone "https://x-access-token:${FLATHUB_TOKEN}@github.com/${FLATHUB_REPO}.git" fh
+          for f in app.verbatim.dictation.yml app.verbatim.dictation.metainfo.xml app.verbatim.dictation.desktop; do
+            sed -e "s/__VERSION__/$VERSION/g" \
+                -e "s/__DEB_SHA256__/$DEB_SHA/g" \
+                -e "s/__RELEASE_DATE__/$RELEASE_DATE/g" \
+                "packaging/flatpak/$f" > "fh/$f"
+          done
+          cd fh
+          git config user.name Underthinker
+          git config user.email trstn.ngyn@gmail.com
+          git checkout -b "$BR"
+          git add app.verbatim.dictation.yml app.verbatim.dictation.metainfo.xml app.verbatim.dictation.desktop
+          git commit -m "Update to $VERSION"
+          git push -u origin "$BR" --force
+          GH_TOKEN="$FLATHUB_TOKEN" gh pr create --repo "$FLATHUB_REPO" \
+            --head "$BR" --title "Update to $VERSION" \
+            --body "Automated manifest update for Verbatim $VERSION (release ${{ github.event.release.tag_name }})."
