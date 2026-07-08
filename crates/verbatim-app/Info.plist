@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged into the bundle Info.plist by tauri. Required or macOS kills the
+	     process the first time it touches the microphone under hardened runtime. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Verbatim transcribes your speech locally to inject text into the focused app. Audio never leaves your device.</string>
+</dict>
+</plist>
