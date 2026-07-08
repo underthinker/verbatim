@@ -56,10 +56,18 @@ pub struct RunnerStatus {
 /// Runtime knobs for the slice. Polish stays off by default (raw injection
 /// path); the polished branch is fully wired for when a real polish engine and
 /// per-app profiles land (M3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunnerConfig {
     pub polish: bool,
     pub polish_deadline: Duration,
+    /// User-confirmed personal-dictionary terms (canonical casing), applied as a
+    /// deterministic post-pass to the injected text (UX.md 5.3). Empty by default.
+    ///
+    /// ponytail: the daemon builds `RunnerConfig::default()` today, so like
+    /// `polish` this stays empty until persisted `Config` is wired into the runner
+    /// (Phase D replaces the hardcoded profile/config path). The post-pass seam
+    /// and its tests land now; wiring lights it up.
+    pub dictionary: Vec<String>,
 }
 
 impl Default for RunnerConfig {
@@ -67,6 +75,7 @@ impl Default for RunnerConfig {
         Self {
             polish: false,
             polish_deadline: Duration::from_millis(1500),
+            dictionary: Vec::new(),
         }
     }
 }
@@ -297,6 +306,10 @@ impl SessionRunner {
         } else {
             (raw.clone(), false)
         };
+        // Deterministic dictionary post-pass over whatever we inject - polished,
+        // raw fallback, or raw-mode - so confirmed terms never depend on the LLM
+        // (UX.md 5.3). `raw` recorded in history stays the verbatim transcript.
+        let text = crate::dictionary::apply_dictionary(&text, &self.config.dictionary);
 
         // Record only on verified delivery: a failed injection is not history.
         if let Some(app_id) = self.inject(&text) {
