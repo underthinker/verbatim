@@ -45,9 +45,14 @@ Scope: llama.cpp polish engine, prompt/profile system with versioned assets, per
 Acceptance criteria:
 
 - [ ] Blind comparison on the benchmark set: polished preferred >= 80%, zero meaning-altering edits in the accepted set (PRD 7).
-- [ ] Deadline misses inject raw with no user-visible failure; measured miss rate < 5% for 10 s utterances on reference hardware.
-- [ ] Polish adds <= 700 ms p50 for 10 s utterances on Apple Silicon; hardware-tier defaults applied elsewhere.
-- [ ] Prompt changes are benchmark-gated in CI.
+  Meaning-preservation half closed: 10/10 within the similarity guard, 0 drift (polish-quality bench, Apple M5, 2026-07-08).
+  The >= 80% preference half needs a real dictation corpus + blind panel; it rides the M4 dogfood, which re-gates all of PRD 7 with >= 5 external testers.
+- [x] Deadline misses inject raw with no user-visible failure; measured miss rate < 5% for 10 s utterances on reference hardware.
+  0.0% (0/50) at the calibrated 378 ms deadline (Apple M5); calibration scales the deadline off per-machine ms/token so the rate holds across tiers. E10 degrades silently to raw (runner.rs `run_polish`), one-time tray notice only on true engine error.
+- [x] Polish adds <= 700 ms p50 for 10 s utterances on Apple Silicon; hardware-tier defaults applied elsewhere.
+  p50 148 ms, p95 238 ms (polish-quality bench, Apple M5, Qwen2.5-0.5B q4_k_m); hardware-tier deadline via `calibration::deadline_from_ms_per_token`.
+- [x] Prompt changes are benchmark-gated in CI.
+  Polish-quality bench runs on every push (`.github/workflows/ci.yml` polish-bench job), failing on a similarity-guard breach, > 20% latency regression, or > 5% deadline-miss rate.
 
 ## M4 - Packaging, hardening, v1.0
 

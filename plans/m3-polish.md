@@ -7,10 +7,10 @@ meaning-preserving text, fully local, without ever surprising the user.
 
 From ROADMAP.md M3:
 
-- [ ] Blind comparison on the benchmark set: polished preferred >= 80%, zero meaning-altering edits in the accepted set (PRD 7).
-- [ ] Deadline misses inject raw with no user-visible failure; measured miss rate < 5% for 10 s utterances on reference hardware.
-- [ ] Polish adds <= 700 ms p50 for 10 s utterances on Apple Silicon; hardware-tier defaults applied elsewhere.
-- [ ] Prompt changes are benchmark-gated in CI.
+- [ ] Blind comparison on the benchmark set: polished preferred >= 80%, zero meaning-altering edits in the accepted set (PRD 7). Meaning half closed (10/10 within guard, 0 drift); >= 80% preference deferred to the M4 dogfood panel.
+- [x] Deadline misses inject raw with no user-visible failure; measured miss rate < 5% for 10 s utterances on reference hardware. 0.0% (0/50) at the calibrated 378 ms deadline (Apple M5).
+- [x] Polish adds <= 700 ms p50 for 10 s utterances on Apple Silicon; hardware-tier defaults applied elsewhere. p50 148 ms (Apple M5).
+- [x] Prompt changes are benchmark-gated in CI. Polish-quality bench gates guard + latency + deadline-miss rate on every push.
 
 ## Current state (verified 2026-07-07)
 
@@ -83,11 +83,21 @@ Prompt versioning, polish-quality benchmark in CI, deadline calibration.
 
 Verification: benchmark runs green in CI on a prompt change; calibration produces a per-machine deadline. Acceptance criteria 1, 3, 4 close here.
 
-## Final phase - acceptance sign-off
+## Final phase - acceptance sign-off (done 2026-07-08, Apple M5)
 
 1. Re-check ROADMAP.md M3 criteria with evidence (blind-comparison run, deadline-miss-rate measurement, Apple Silicon p50, CI benchmark gate); tick in a closing PR.
 2. Guards: no non-zero temperature; similarity guard covered; E10 path still degrades silently + one-time tray notice.
 3. Blind-comparison result recorded in the PR.
+
+Sign-off evidence (Qwen2.5-0.5B q4_k_m, `default@1` prompt, GGML_NO_I8MM=1):
+
+- Criterion 3 (p50 <= 700 ms): **p50 148 ms**, p95 238 ms over 5x10 polishes. Closed.
+- Criterion 2 (deadline-miss < 5%): **0.0% (0/50)** at the calibrated 378 ms deadline. A `check_deadline_miss_rate` pass was added to the bench, so this is now a CI gate, not a one-off. Closed.
+- Criterion 4 (CI benchmark gate): polish-quality bench gates similarity guard + latency regression + deadline-miss rate on every push. Closed.
+- Criterion 1: meaning half **closed** - 10/10 within the similarity guard, 0 drift. The `>= 80%` preference half is **deferred to the M4 dogfood**, which re-gates all of PRD 7 with a real corpus + >= 5 external testers; a 4-10 sample synthetic set cannot honestly produce that number.
+- Guards: temperature 0 (greedy sampler, `llama.rs`), similarity guard 5 boundary unit tests green, E10 degrades silently to raw in `run_polish` (guard breach + deadline miss are silent; only a true engine error raises the one-time E10 tray notice).
+
+Deliberately left un-armed: the exact-match golden gate (`polish-golden.txt`). Greedy temp-0 output is deterministic per-machine but not across Metal builds, so a locally-minted golden would redden CI on the reference runner. The guard + latency + miss-rate gates already fail a bad prompt change; the exact golden is not worth cross-machine flakiness.
 
 Dependency order: A first (engine before pipeline features consume it). B after A. C and D after A, parallel with B (both extend config + `run_polish`). E last (benchmarks + calibration audit the whole pipeline).
 

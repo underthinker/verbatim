@@ -41,6 +41,12 @@ const TRANSCRIPTS: &[&str] = &[
     "hey um quick question uh what time does the the standup start tomorrow and and should i prepare anything",
     "um yeah ok sounds good",
     "so i think we should uh we should ship the the feature on friday if if the tests pass",
+    "so um i noticed that the the login page is is kinda broken on mobile like when you tap the the email field the keyboard covers the the submit button so you cant actually see what youre typing",
+    "hey can we uh can we move our one on one to like thursday afternoon i have a a conflict come up in the morning that i cant really get out of",
+    "ok so the the way the cache works is uh it stores the the response for like five minutes and then after that it it just refetches from the the api so you might see stale data for a bit",
+    "sounds good ill uh ill get that done by end of day",
+    "um so for the release we still need to uh we need to finish the docs update the changelog and and run the the full test suite before we tag it",
+    "yeah i i totally agree with with what you said earlier about about keeping the scope small for for the first version",
 ];
 
 /// A polish generation is never allowed to self-reject in the bench: we measure
@@ -142,6 +148,8 @@ fn run() -> Result<ExitCode, String> {
         deadline.as_millis()
     );
 
+    check_deadline_miss_rate(&engine, &profile, deadline, iterations)?;
+
     if let Ok(name) = std::env::var("VERBATIM_BENCH_BASELINE")
         && !name.is_empty()
     {
@@ -149,6 +157,50 @@ fn run() -> Result<ExitCode, String> {
     }
 
     Ok(ExitCode::SUCCESS)
+}
+
+/// Criterion 2 (ROADMAP M3): deadline-miss rate < 5% for 10 s-scale utterances.
+/// Re-run the set under the *calibrated* deadline - not the 60 s bench deadline -
+/// and count self-rejections. Calibration scales the budget off this machine's own
+/// ms/token against a typical output length (calibration::TYPICAL_OUTPUT_TOKENS,
+/// ~2x a real 10 s utterance), so a correctly-tuned deadline degrades almost no
+/// real utterance to raw. Measuring it here proves the calibration holds on the
+/// machine the bench runs on, and fails CI if a prompt/engine change ever pushes
+/// generation past the calibrated budget.
+fn check_deadline_miss_rate(
+    engine: &LlamaPolishEngine,
+    profile: &PolishProfile,
+    deadline: Duration,
+    iterations: usize,
+) -> Result<(), String> {
+    const MISS_LIMIT: f64 = 0.05;
+    let mut misses = 0usize;
+    let mut trials = 0usize;
+    for _ in 0..iterations {
+        for raw in TRANSCRIPTS {
+            trials += 1;
+            let outcome = engine
+                .polish(raw, profile, deadline)
+                .map_err(|err| format!("polish failed under the calibrated deadline: {err}"))?;
+            if matches!(outcome, PolishOutcome::Rejected { .. }) {
+                misses += 1;
+            }
+        }
+    }
+    let miss_rate = misses as f64 / trials.max(1) as f64;
+    println!(
+        "polish bench: deadline-miss rate {:.1}% ({misses}/{trials}) at the calibrated {} ms deadline",
+        miss_rate * 100.0,
+        deadline.as_millis()
+    );
+    if miss_rate > MISS_LIMIT {
+        return Err(format!(
+            "deadline-miss rate {:.1}% exceeds the 5% criterion at the calibrated {} ms deadline",
+            miss_rate * 100.0,
+            deadline.as_millis()
+        ));
+    }
+    Ok(())
 }
 
 /// One timed polish; returns (wall ms, polished text). A rejection or error at the
