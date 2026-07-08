@@ -16,6 +16,8 @@ export default function Settings() {
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [newTerm, setNewTerm] = useState("");
+  const [newAppId, setNewAppId] = useState("");
+  const [newProfile, setNewProfile] = useState("raw");
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Roving arrow-key navigation between tabs (WAI-ARIA tablist, UX.md 8).
@@ -52,6 +54,20 @@ export default function Settings() {
 
   const removeTerm = (term: string) =>
     patch({ dictionary: config.dictionary.filter((t) => t !== term) });
+
+  const addProfile = () => {
+    const appId = newAppId.trim();
+    if (appId === "") return;
+    patch({ profiles: { ...config.profiles, [appId]: newProfile } });
+    setNewAppId("");
+    setNewProfile("raw");
+  };
+
+  const removeProfile = (appId: string) => {
+    const next = { ...config.profiles };
+    delete next[appId];
+    patch({ profiles: next });
+  };
 
   const onHotkey = (chord: string) => {
     patch({ hotkey: chord });
@@ -202,6 +218,64 @@ export default function Settings() {
                   type="button"
                   onClick={addTerm}
                   disabled={newTerm.trim() === ""}
+                >
+                  Add
+                </button>
+              </div>
+            </fieldset>
+            <fieldset className="settings__field">
+              <legend>Per-app profiles</legend>
+              <p className="settings__hint">
+                Choose how each app is handled. Terminals default to raw; assign
+                Raw to force the exact transcript, or Polished to override.
+              </p>
+              {Object.keys(config.profiles).length === 0 ? (
+                <p className="settings__hint">No per-app overrides yet.</p>
+              ) : (
+                <ul className="settings__dictionary">
+                  {Object.entries(config.profiles).map(([appId, profile]) => (
+                    <li key={appId} className="settings__dictionary-item">
+                      <span>
+                        {appId} &rarr; {profile === "raw" ? "Raw" : "Polished"}
+                      </span>
+                      <button
+                        type="button"
+                        className="settings__dictionary-remove"
+                        onClick={() => removeProfile(appId)}
+                        aria-label={`Remove override for ${appId}`}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="settings__dictionary-add settings__profile-add">
+                <input
+                  type="text"
+                  value={newAppId}
+                  placeholder="e.g. com.apple.Terminal"
+                  aria-label="App id"
+                  onChange={(e) => setNewAppId(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addProfile();
+                    }
+                  }}
+                />
+                <select
+                  value={newProfile}
+                  aria-label="Profile for app"
+                  onChange={(e) => setNewProfile(e.target.value)}
+                >
+                  <option value="raw">Raw</option>
+                  <option value="default">Polished</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={addProfile}
+                  disabled={newAppId.trim() === ""}
                 >
                   Add
                 </button>

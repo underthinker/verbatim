@@ -11,10 +11,12 @@
 //! corrupt file falls back to `Config::default()` so a bad config never blocks
 //! startup. `$VERBATIM_CONFIG_DIR` overrides the location for tests.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use verbatim_core::hotkey::HotkeyMode;
+use verbatim_core::runner::RunnerConfig;
 
 const CONFIG_FILE: &str = "config.toml";
 const CONFIG_DIR_ENV: &str = "VERBATIM_CONFIG_DIR";
@@ -45,11 +47,10 @@ impl HotkeyModeConfig {
 /// The full user config. One annotated `Default` is the single source of every
 /// default (ARCHITECTURE.md 4.8).
 ///
-/// ponytail: per-app profiles (UX.md 5.1) are still deferred to Phase D - add a
-/// `profiles` field here when that slice lands. The personal dictionary is
-/// present below; auto-learn + its one-click confirm flow wait on an auto-learn
-/// source (still an open question), so for now every term is user-added and
-/// applies as soon as it is saved.
+/// The personal dictionary and per-app profiles are both present below and wired
+/// live into the runner via [`Config::to_runner_config`]. Dictionary auto-learn +
+/// its one-click confirm flow wait on an auto-learn source (still an open
+/// question), so for now every term is user-added and applies as soon as saved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -74,6 +75,10 @@ pub struct Config {
     /// polish prompt and re-applied as a deterministic post-pass over the injected
     /// text, so a term like `PCM` never depends on the LLM alone.
     pub dictionary: Vec<String>,
+    /// Per-app polish profile assignments: frontmost app id -> profile id
+    /// (UX.md 5.1). The reserved id `raw` forces raw injection for that app;
+    /// terminals default to raw even without an entry. Empty by default.
+    pub profiles: BTreeMap<String, String>,
 }
 
 impl Default for Config {
@@ -89,6 +94,7 @@ impl Default for Config {
             history_retention_days: 7,
             log_level: "info".to_owned(),
             dictionary: Vec::new(),
+            profiles: BTreeMap::new(),
         }
     }
 }
@@ -98,6 +104,20 @@ impl Config {
     /// file (a bad config must never block startup).
     pub fn load() -> Self {
         load_from(&config_dir())
+    }
+
+    /// Project the persisted config onto the runner's runtime knobs
+    /// (ARCHITECTURE.md 4.8). The daemon/GUI build this at startup and re-send it
+    /// on every save (`reconfigure`) so polish, dictionary, and per-app profiles
+    /// apply without a restart. Hotkey/model live re-apply is out of scope here -
+    /// the runner only owns the pipeline knobs, not OS hotkey registration.
+    pub fn to_runner_config(&self) -> RunnerConfig {
+        RunnerConfig {
+            polish: self.polish,
+            dictionary: self.dictionary.clone(),
+            profiles: self.profiles.clone(),
+            ..RunnerConfig::default()
+        }
     }
 
     /// Persist to the config dir, creating it if needed.
@@ -288,11 +308,35 @@ mod tests {
             history_retention_days: 0,
             transcription_model: Some("whisper-small.en".to_owned()),
             dictionary: vec!["PCM".to_owned(), "gRPC".to_owned()],
+            profiles: BTreeMap::from([
+                ("com.apple.Terminal".to_owned(), "raw".to_owned()),
+                ("com.tinyspeck.slackmacgap".to_owned(), "email".to_owned()),
+            ]),
             ..Config::default()
         };
         save_to(&dir, &config).expect("save");
         assert_eq!(load_from(&dir), config);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn to_runner_config_projects_polish_dictionary_and_profiles() {
+        let config = Config {
+            polish: true,
+            dictionary: vec!["PCM".to_owned()],
+            profiles: BTreeMap::from([("com.apple.Terminal".to_owned(), "raw".to_owned())]),
+            ..Config::default()
+        };
+        let runner = config.to_runner_config();
+        assert!(runner.polish);
+        assert_eq!(runner.dictionary, vec!["PCM".to_owned()]);
+        assert_eq!(
+            runner
+                .profiles
+                .get("com.apple.Terminal")
+                .map(String::as_str),
+            Some("raw")
+        );
     }
 
     #[test]
