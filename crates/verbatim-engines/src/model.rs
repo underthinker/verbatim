@@ -35,6 +35,13 @@ pub struct ModelSpec {
     /// Installed RAM (GiB) at or above which this model is a smooth realtime
     /// choice - the input to the onboarding hardware recommendation.
     pub min_ram_gib: u32,
+    /// SPDX license id of the model weights, rendered in the model manager +
+    /// About surface (PRD 136).
+    pub license: &'static str,
+    /// The credit line the license requires. Parakeet's CC-BY-4.0 obliges
+    /// attribution to NVIDIA; every catalog entry carries one so the surfaces
+    /// never render a blank.
+    pub attribution: &'static str,
 }
 
 /// The built-in catalog (ARCHITECTURE.md 4.2/4.3). Ordered small -> large
@@ -47,6 +54,8 @@ pub const CATALOG: &[ModelSpec] = &[
         size_bytes: 148_000_000,
         sha256: "",
         min_ram_gib: 4,
+        license: "MIT",
+        attribution: "OpenAI Whisper, via whisper.cpp (ggml)",
     },
     ModelSpec {
         id: "whisper-small.en",
@@ -55,6 +64,8 @@ pub const CATALOG: &[ModelSpec] = &[
         size_bytes: 488_000_000,
         sha256: "",
         min_ram_gib: 8,
+        license: "MIT",
+        attribution: "OpenAI Whisper, via whisper.cpp (ggml)",
     },
     ModelSpec {
         id: "whisper-medium.en",
@@ -63,6 +74,20 @@ pub const CATALOG: &[ModelSpec] = &[
         size_bytes: 1_530_000_000,
         sha256: "",
         min_ram_gib: 16,
+        license: "MIT",
+        attribution: "OpenAI Whisper, via whisper.cpp (ggml)",
+    },
+    // Parakeet (Phase C): the second transcription engine's model. CC-BY-4.0
+    // obliges the NVIDIA credit rendered in the model manager + About (PRD 136).
+    ModelSpec {
+        id: "parakeet-tdt-0.6b",
+        name: "Parakeet (English)",
+        kind: ModelKind::Transcription,
+        size_bytes: 660_000_000,
+        sha256: "",
+        min_ram_gib: 4,
+        license: "CC-BY-4.0",
+        attribution: "NVIDIA Parakeet TDT 0.6B, ONNX export via sherpa-onnx (k2-fsa)",
     },
     ModelSpec {
         id: "polish-qwen2.5-0.5b",
@@ -71,6 +96,8 @@ pub const CATALOG: &[ModelSpec] = &[
         size_bytes: 352_000_000,
         sha256: "",
         min_ram_gib: 8,
+        license: "Apache-2.0",
+        attribution: "Qwen2.5 0.5B by Alibaba Cloud, via llama.cpp (GGUF)",
     },
 ];
 
@@ -95,9 +122,43 @@ pub fn recommend_transcription(hardware: HardwareProfile) -> &'static ModelSpec 
         .filter(|spec| spec.kind == ModelKind::Transcription);
     // CATALOG has at least one transcription model; the fallback is the first.
     let smallest = asr.clone().next().unwrap_or(&CATALOG[0]);
+    // Largest that fits by RAM, tie broken toward the *earlier* catalog entry.
+    // The tie-break keeps the pick stable when two models share a RAM tier (e.g.
+    // whisper-base and parakeet at 4 GiB): a new same-tier model must not
+    // silently become the auto-recommendation before its engine is wired.
     asr.filter(|spec| spec.min_ram_gib <= hardware.total_ram_gib)
-        .max_by_key(|spec| spec.min_ram_gib)
+        .fold(None, |best: Option<&ModelSpec>, spec| match best {
+            Some(b) if b.min_ram_gib >= spec.min_ram_gib => Some(b),
+            _ => Some(spec),
+        })
         .unwrap_or(smallest)
+}
+
+/// How a catalog model fits the detected hardware - the model manager's per-row
+/// label (plan Phase C item 4). Fit is RAM-bound: `has_gpu` affects inference
+/// *speed* (backend fallback at load, calibration ms/token), not whether a model
+/// fits, so it does not move a model between tiers here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fitness {
+    /// The single best pick for this hardware (the onboarding recommendation).
+    Recommended,
+    /// Runs comfortably, just not the top pick.
+    Fits,
+    /// Above the machine's RAM tier - runnable but may miss the latency budget.
+    Heavy,
+}
+
+/// Classify `spec` against `hardware` for the model-manager label. Polish models
+/// are never "Recommended" (that word is the transcription pick); they are Fits
+/// or Heavy by RAM alone.
+pub fn fitness(spec: &ModelSpec, hardware: HardwareProfile) -> Fitness {
+    if spec.kind == ModelKind::Transcription && spec.id == recommend_transcription(hardware).id {
+        Fitness::Recommended
+    } else if spec.min_ram_gib <= hardware.total_ram_gib {
+        Fitness::Fits
+    } else {
+        Fitness::Heavy
+    }
 }
 
 #[derive(Debug, Error)]
@@ -146,6 +207,54 @@ mod tests {
             })
             .id,
             "whisper-medium.en"
+        );
+    }
+
+    #[test]
+    fn every_catalog_model_carries_license_and_attribution() {
+        // The model manager + About surface must never render a blank credit
+        // (PRD 136 - Parakeet's CC-BY-4.0 in particular obliges attribution).
+        for spec in CATALOG {
+            assert!(!spec.license.is_empty(), "{} missing license", spec.id);
+            assert!(
+                !spec.attribution.is_empty(),
+                "{} missing attribution",
+                spec.id
+            );
+        }
+        let parakeet = spec("parakeet-tdt-0.6b").expect("Parakeet is in the catalog");
+        assert_eq!(parakeet.license, "CC-BY-4.0");
+        assert!(parakeet.attribution.contains("NVIDIA"));
+    }
+
+    #[test]
+    fn fitness_labels_track_the_recommendation() {
+        let hw = HardwareProfile {
+            total_ram_gib: 8,
+            has_gpu: false,
+        };
+        let rec = recommend_transcription(hw);
+        assert_eq!(fitness(rec, hw), Fitness::Recommended);
+        // A model above the RAM tier is Heavy; one that fits but is not the pick
+        // is Fits.
+        assert_eq!(
+            fitness(spec("whisper-medium.en").unwrap(), hw),
+            Fitness::Heavy
+        );
+        assert_eq!(fitness(spec("whisper-base.en").unwrap(), hw), Fitness::Fits);
+    }
+
+    #[test]
+    fn same_tier_tie_stays_on_the_earlier_model() {
+        // Parakeet shares the 4 GiB tier with whisper-base; the recommendation
+        // must not flip to it purely on the tie (its engine lands later).
+        assert_eq!(
+            recommend_transcription(HardwareProfile {
+                total_ram_gib: 4,
+                has_gpu: false,
+            })
+            .id,
+            "whisper-base.en"
         );
     }
 

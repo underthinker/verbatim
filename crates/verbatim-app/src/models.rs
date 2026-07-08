@@ -41,6 +41,13 @@ pub struct ManagedModel {
     pub on_disk_bytes: Option<u64>,
     /// Whether this model is the configured default for its kind.
     pub is_default: bool,
+    /// SPDX license id of the weights (PRD 136 attribution surface).
+    pub license: String,
+    /// Required credit line, rendered in the model manager + About.
+    pub attribution: String,
+    /// Whether this is the recommended transcription model for the detected
+    /// hardware - the model manager's "Recommended" badge (Phase C item 4).
+    pub recommended: bool,
 }
 
 /// Serde mirror of `ModelKind` (engines stays serde-free).
@@ -155,6 +162,7 @@ impl ModelManager {
     }
 
     fn managed(&self, spec: &ModelSpec, config: &Config) -> ManagedModel {
+        let hardware = crate::onboarding::detect_hardware();
         let on_disk_bytes = on_disk_size(&self.model_path(spec.id));
         let default_id = match spec.kind {
             ModelKind::Transcription => config.transcription_model.as_deref(),
@@ -168,6 +176,9 @@ impl ModelManager {
             installed: on_disk_bytes.is_some(),
             on_disk_bytes,
             is_default: default_id == Some(spec.id),
+            license: spec.license.to_owned(),
+            attribution: spec.attribution.to_owned(),
+            recommended: model::fitness(spec, hardware) == model::Fitness::Recommended,
         }
     }
 }

@@ -3,7 +3,14 @@
 // validates the hotkey and owns every default.
 import { useEffect, useRef, useState } from "react";
 
-import { Config, getConfig, setConfig, validateHotkey } from "./commands";
+import {
+  Config,
+  getConfig,
+  listModels,
+  ManagedModel,
+  setConfig,
+  validateHotkey,
+} from "./commands";
 import HistoryList from "./HistoryList";
 import ModelsTab from "./ModelsTab";
 
@@ -12,6 +19,7 @@ type Tab = (typeof TABS)[number];
 
 export default function Settings() {
   const [config, setLocal] = useState<Config | null>(null);
+  const [models, setModels] = useState<ManagedModel[]>([]);
   const [tab, setTab] = useState<Tab>("General");
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -33,6 +41,7 @@ export default function Settings() {
 
   useEffect(() => {
     getConfig().then(setLocal).catch(() => setLocal(null));
+    listModels().then(setModels).catch(() => setModels([]));
   }, []);
 
   if (!config) {
@@ -316,6 +325,26 @@ export default function Settings() {
               Verbatim runs fully on your machine. No audio or text ever leaves this
               computer.
             </p>
+            <fieldset className="settings__field">
+              <legend>Model licenses</legend>
+              <p className="settings__hint">
+                Verbatim bundles third-party models under their own licenses.
+              </p>
+              <ul className="settings__attributions">
+                {Array.from(
+                  new Map(
+                    models.map((m) => [
+                      `${m.attribution}·${m.license}`,
+                      m,
+                    ]),
+                  ).values(),
+                ).map((m) => (
+                  <li key={`${m.attribution}·${m.license}`}>
+                    {m.attribution} <span className="models__badge">{m.license}</span>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
           </>
         )}
       </section>

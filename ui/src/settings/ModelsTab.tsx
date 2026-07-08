@@ -103,6 +103,12 @@ export default function ModelsTab() {
                   {model.isDefault && (
                     <span className="models__badge"> Default</span>
                   )}
+                  {model.recommended && !model.isDefault && (
+                    <span className="models__badge"> Recommended</span>
+                  )}
+                </span>
+                <span className="models__attribution">
+                  {model.attribution} · {model.license}
                 </span>
                 {downloading && (
                   <progress
