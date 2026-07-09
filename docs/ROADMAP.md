@@ -56,12 +56,13 @@ Acceptance criteria:
 
 ## M4 - Packaging, hardening, v1.0
 
-Scope: signing + notarization, Homebrew/winget/Flathub/AppImage channels, Parakeet engine + attribution surfaces, model recommendations by hardware, threat-model doc, docs site/README for end users, latency regression CI.
+Scope: the signing + notarization pipeline (wired, certificates deferred), Homebrew/winget/Flathub/AppImage channels, Parakeet engine + attribution surfaces, model recommendations by hardware, threat-model doc, docs site/README for end users, latency regression CI.
 
 Acceptance criteria:
 
 - [ ] All PRD section 7 success criteria pass, measured and recorded.
-- [ ] Signed installers on all channels; clean-machine installs verified.
+- [ ] Unsigned installers on all channels, with the one-time OS bypass documented; clean-machine install verified on each OS.
+  (2026-07-09: code signing deferred, not dropped. Verbatim ships to a small known audience, where an Apple Developer ID and a Windows Authenticode OV certificate buy only dialog suppression. `release.yml` keeps both signing paths wired behind absent secrets and degrades loud, so this reverses by adding secrets, never by editing code. Accepted cost: macOS keys TCC grants to the ad-hoc code-signing hash, so Microphone and Accessibility must be re-granted on every update - see [ENGINEERING.md](ENGINEERING.md) section 7.)
 - [ ] Crash-free rate > 99.5% over a 2-week dogfood with >= 5 external testers across the three OSes.
 - [x] Security review of the injection IPC surface (trigger verbs only) done.
   (2026-07-08, M4 Phase D: [docs/THREAT_MODEL.md](THREAT_MODEL.md) plus IPC hardening - F1/F2 fixed with regression tests, F3/F4 dispositioned, wire-protocol fuzz corpus committed.)

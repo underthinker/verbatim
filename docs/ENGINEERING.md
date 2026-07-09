@@ -94,8 +94,12 @@ GitHub Actions:
 
 ## 7. Signing, packaging, distribution
 
+**Signing is deferred as of 2026-07-09** (ROADMAP M4). Verbatim's audience is small and known, so neither certificate is worth its yearly cost yet. The pipeline below is fully wired; each signing step no-ops with a `::warning::` when its secret is absent, so signing turns on by adding secrets, never by editing code. What follows describes the intended end state and, per OS, what shipping unsigned costs today.
+
 - **macOS**: Developer ID Application certificate (stable identity from the first public build; TCC grants are keyed to it, spike 2), hardened runtime, notarization via `notarytool`. **No App Sandbox** (incompatible with Accessibility injection, spike 2) -> direct-download `.dmg` + Homebrew cask; Mac App Store is out of scope permanently.
+  *Unsigned today*: Gatekeeper refuses first launch until the quarantine xattr is cleared, and TCC falls back to keying grants on the ad-hoc `cdhash`, which changes on every build - so Microphone and Accessibility are re-prompted on every update. A self-signed certificate would stabilise the designated requirement and fix the re-prompt without paying Apple, at the cost of a key to manage; unmeasured, revisit if the dogfood finds the re-prompt intolerable.
 - **Windows**: Authenticode (OV cert initially; EV/Azure Trusted Signing when SmartScreen reputation matters), `.msi` via WiX through tauri-bundler, winget manifest.
+  *Unsigned today*: SmartScreen shows "Windows protected your PC" -> More info -> Run anyway. No functional loss. A self-signed Authenticode certificate is worthless here (untrusted root) and is deliberately not used.
 - **Linux**: AppImage (primary, bundles portals-client libs) + Flatpak on Flathub (libei portal path is Flatpak-clean, spike 1; uinput fallback documented as needing host permission) + `.deb`. AppImage and Flatpak both ship the udev-rule helper script referenced by onboarding (E9).
 - Versioning: SemVer; `0.x` until v1.0 acceptance criteria (PRD 7) pass.
 - Release cadence: tag-driven; release notes generated from Conventional Commits; CHANGELOG auto-generated (never hand-edited).

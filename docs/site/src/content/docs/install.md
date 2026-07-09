@@ -3,9 +3,16 @@ title: Install
 description: Install Verbatim on macOS, Windows, or Linux from the channel that suits you - Homebrew, winget, Flathub, AppImage, or a direct download.
 ---
 
-Verbatim ships signed builds for macOS, Windows 11, and Ubuntu 24.04 (and most modern Linux desktops).
+Verbatim builds for macOS, Windows 11, and Ubuntu 24.04 (and most modern Linux desktops).
 Pick the channel you prefer below.
 After installing, continue to [Permissions](/permissions/) - Verbatim needs a couple of one-time grants before it can hear you and type for you.
+
+:::caution[Verbatim's builds are not code-signed]
+Verbatim is a small local-first project and does not pay for an Apple Developer ID or a Windows Authenticode certificate.
+The binaries are built in public from tagged commits by [GitHub Actions](https://github.com/underthinker/verbatim/actions), and every release publishes SHA-256 checksums you can verify yourself.
+The trade-off is that macOS and Windows each show a one-time warning you have to click past.
+Both are covered below.
+:::
 
 ## macOS
 
@@ -14,13 +21,30 @@ Verbatim supports Apple Silicon and Intel Macs.
 **Homebrew (recommended):**
 
 ```sh
-brew install --cask verbatim
+brew install --cask --no-quarantine verbatim
 ```
+
+`--no-quarantine` tells macOS not to flag the app as downloaded-from-the-internet, which is what makes Gatekeeper refuse to open an unsigned build.
+Without it, you will need the "Open Anyway" steps below.
 
 **Direct download:**
 Download the `.dmg` from the [latest release](https://github.com/underthinker/verbatim/releases/latest), open it, and drag Verbatim to Applications.
 
-The build is signed with an Apple Developer ID and notarized, so Gatekeeper opens it without a warning.
+The first launch will fail with *"Verbatim" is damaged and can't be opened* or *cannot be opened because Apple could not verify it*.
+That message is Gatekeeper reacting to the missing signature, not a corrupted download.
+Clear it once, either way:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Verbatim.app
+```
+
+Or, without the terminal: open Verbatim once and dismiss the warning, then go to **System Settings -> Privacy & Security**, scroll to the message about Verbatim being blocked, and click **Open Anyway**.
+
+:::note
+Because the build is unsigned, macOS identifies Verbatim by the exact bytes of the app rather than by a signing certificate.
+Every time you install a new version, macOS treats it as a brand-new app and asks you to grant Microphone and Accessibility permission again.
+This is expected, and it is the main day-to-day cost of skipping the certificate.
+:::
 
 ## Windows
 
@@ -35,8 +59,8 @@ winget install Verbatim
 **Direct download:**
 Download the `.msi` from the [latest release](https://github.com/underthinker/verbatim/releases/latest) and run it.
 
-The installer is Authenticode-signed.
-On a brand-new signing certificate, SmartScreen may still show a "Windows protected your PC" prompt the first few times - click **More info -> Run anyway**.
+Because the installer is unsigned, SmartScreen shows a **"Windows protected your PC"** dialog.
+Click **More info**, confirm the publisher line reads *Unknown publisher*, then click **Run anyway**.
 
 ## Linux
 
