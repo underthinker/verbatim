@@ -148,6 +148,18 @@ body {
   font-size: 0.9em;
 }
 
+/* A button that reads as a link: the docs open through a Tauri command, not an
+   anchor, so the webview never navigates. */
+.settings__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .settings__footer {
   display: flex;
   align-items: center;

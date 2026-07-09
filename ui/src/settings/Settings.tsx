@@ -8,6 +8,7 @@ import {
   getConfig,
   listModels,
   ManagedModel,
+  openDocs,
   setConfig,
   validateHotkey,
 } from "./commands";
@@ -26,6 +27,7 @@ export default function Settings() {
   const [newTerm, setNewTerm] = useState("");
   const [newAppId, setNewAppId] = useState("");
   const [newProfile, setNewProfile] = useState("raw");
+  const [docsFailed, setDocsFailed] = useState(false);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Roving arrow-key navigation between tabs (WAI-ARIA tablist, UX.md 8).
@@ -325,14 +327,24 @@ export default function Settings() {
               Verbatim runs fully on your machine. No audio or text ever leaves this
               computer.
             </p>
-            {/* ponytail: plain text, not a click-to-open link - opening an
-                external URL from the webview needs the tauri opener plugin
-                wired + a capability grant. Show the address so it always works;
-                upgrade to one-click open when the opener plugin lands. */}
             <p className="settings__row">
               <span>Documentation &amp; help</span>
-              <code>underthinker.github.io/verbatim</code>
+              <button
+                type="button"
+                className="settings__link"
+                onClick={() => openDocs().catch(() => setDocsFailed(true))}
+              >
+                underthinker.github.io/verbatim
+              </button>
             </p>
+            {/* No browser handler (bare Linux session, sandboxed launcher): say
+                so rather than swallowing the click. The address stays readable
+                above, so it is still copyable by hand. */}
+            {docsFailed && (
+              <p className="settings__error">
+                Couldn&apos;t open your browser. Visit the address above.
+              </p>
+            )}
             <fieldset className="settings__field">
               <legend>Model licenses</legend>
               <p className="settings__hint">

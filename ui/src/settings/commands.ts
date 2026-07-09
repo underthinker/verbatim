@@ -80,3 +80,6 @@ export interface HistoryEntry {
 export const listHistory = () => invoke<HistoryEntry[]>("history_list");
 
 export const clearHistory = () => invoke<void>("history_clear");
+
+/** Open the published docs in the OS browser. The URL lives in Rust, not here. */
+export const openDocs = () => invoke<void>("open_docs");

@@ -13,13 +13,13 @@ Content lives in `src/content/docs/` as plain Markdown, so it is readable direct
 
 The troubleshooting copy is kept in sync with the app's error catalog (`crates/verbatim-app/src/error_catalog.rs`); when a message changes there, update it here too.
 
-## Building (follow-up)
-
-The Starlight config (`astro.config.mjs`, `package.json`) is in place; wiring the build into CI and publishing to GitHub Pages is a follow-up.
-To preview locally once the toolchain is set up:
+## Building
 
 ```sh
 cd docs/site
-npm install
-npm run dev
+pnpm install
+pnpm dev      # preview at localhost:4321/verbatim
+pnpm build    # static output in dist/
 ```
+
+`.github/workflows/docs.yml` builds the site on every PR touching `docs/site/` and publishes `main` to GitHub Pages at <https://underthinker.github.io/verbatim>.
