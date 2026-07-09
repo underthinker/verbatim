@@ -100,6 +100,7 @@ Two-week external dogfood re-gating all of PRD section 7.
 
 1. Recruit >= 5 external testers covering macOS, Windows 11, Ubuntu 24.04 (GNOME Wayland + KDE among them).
 2. Local session/crash counters (no network) + a tester report template; crash-free session rate computed from submitted reports (criterion: > 99.5%).
+   (2026-07-08: infra landed ahead of recruiting - `crates/verbatim-app/src/stats.rs` counts verified deliveries and reconciles unclean shutdowns via a startup marker, wired into both daemon serve paths and the GUI; `verbatim stats` prints the report block; template in `docs/DOGFOOD_REPORT_TEMPLATE.md`. E2E-verified: dictation increments, `kill -9` counts a crash, clean SIGTERM does not.)
 3. Polish-preference blind panel: testers submit real dictation transcript pairs (raw vs polished, consented, locally collected); blind comparison scores the >= 80% preference half of M3/PRD criterion 1.
 4. Onboarding timing: each tester's installer-download-to-first-dictation time recorded (< 5 min, no docs).
 5. Latency spot-checks on tester hardware recorded against the PRD budgets (raw < 800 ms p50, polished < 1.5 s p50).

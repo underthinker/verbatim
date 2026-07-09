@@ -60,6 +60,14 @@ fn fake_model() -> ModelHandle {
 // still the entry for every other platform/feature combination and the tests.
 #[cfg_attr(all(feature = "global-hotkey", target_os = "macos"), allow(dead_code))]
 pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
+    // Dogfood counters (M4 Phase E): reconcile any crash, count deliveries.
+    let stats_dir = crate::config::data_dir();
+    crate::stats::begin_run(&stats_dir);
+    tokio::spawn(crate::stats::run_recorder(
+        events.subscribe(),
+        stats_dir.clone(),
+    ));
+
     let (runner, handle) =
         SessionRunner::new(build_deps(), Config::load().to_runner_config(), events);
     tokio::spawn(runner.run());
@@ -173,7 +181,10 @@ pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
         backend
     };
 
-    serve_with_handle(path, handle).await
+    let result = serve_with_handle(path, handle).await;
+    // Clean return means an orderly shutdown, so the next start is not a crash.
+    crate::stats::end_run_clean(&stats_dir);
+    result
 }
 
 /// Boot the daemon with a real global hotkey driving dictation (Phase 5).
@@ -223,6 +234,14 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
             }
         }
     });
+
+    // Dogfood counters (M4 Phase E): reconcile any crash, count deliveries.
+    let stats_dir = crate::config::data_dir();
+    crate::stats::begin_run(&stats_dir);
+    runtime.spawn(crate::stats::run_recorder(
+        events.subscribe(),
+        stats_dir.clone(),
+    ));
 
     let (runner, handle) =
         SessionRunner::new(build_deps(), Config::load().to_runner_config(), events);
@@ -334,6 +353,8 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
     // On a tray quit the socket server task never ran its own cleanup, so clear
     // the socket here; a signal-driven shutdown already removed it (ignored).
     transport::cleanup(path);
+    // Reaching here is an orderly shutdown, so the next start is not a crash.
+    crate::stats::end_run_clean(&stats_dir);
     Ok(())
 }
 

@@ -23,5 +23,6 @@ pub mod onboarding;
 pub mod overlay;
 pub mod selftest;
 pub mod settings;
+pub mod stats;
 pub mod transport;
 pub mod tray;
