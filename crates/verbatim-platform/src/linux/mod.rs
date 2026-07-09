@@ -18,6 +18,8 @@
 //! `verbatim trigger`).
 
 #[cfg(feature = "linux-inject")]
+mod announce;
+#[cfg(feature = "linux-inject")]
 mod clipboard;
 #[cfg(feature = "linux-inject")]
 mod focus;
@@ -32,6 +34,8 @@ mod portal;
 #[cfg(feature = "linux-inject")]
 mod uinput;
 
+#[cfg(feature = "linux-inject")]
+pub use announce::LinuxAnnouncer;
 #[cfg(feature = "linux-inject")]
 pub use clipboard::LinuxClipboardGuard;
 #[cfg(feature = "linux-inject")]

@@ -17,6 +17,8 @@
 //! `RegisterHotKey` only reports presses).
 
 #[cfg(feature = "win-inject")]
+mod announce;
+#[cfg(feature = "win-inject")]
 mod clipboard;
 #[cfg(feature = "win-inject")]
 mod focus;
@@ -27,6 +29,8 @@ mod inject;
 #[cfg(feature = "win-inject")]
 mod permission;
 
+#[cfg(feature = "win-inject")]
+pub use announce::WinAnnouncer;
 #[cfg(feature = "win-inject")]
 pub use clipboard::WinClipboardGuard;
 #[cfg(feature = "win-inject")]

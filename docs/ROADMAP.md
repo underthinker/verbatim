@@ -38,7 +38,11 @@ Acceptance criteria:
 - [ ] Overlay never takes focus (verified on KDE, the spike 1 regression case) and respects reduced-motion.
 - [ ] Accessibility pass: keyboard-only navigation, screen-reader labels, no color-only signaling.
   (2026-07-09: markup pass done. Tablist takes Home/End and its panel is focusable, so the control-free Dictation panel is reachable; onboarding moves focus to the new step's heading; history rows name raw vs polished off-screen rather than by rule-and-hue alone; the copy confirmation, the try-it state word, and the interrupted download reach a live region. Forced-colors restores the step dots, the download bar, and the selected tab, all of which lost their only signal when the accent background flattened. `eslint-plugin-jsx-a11y` (strict) now runs in the `pnpm lint` CI job as the standing guard.
-  Two gaps keep this open: `AccessibilityAnnouncer` has a macOS implementation only, so overlay state never reaches Narrator or Orca - the overlay window is non-activating, so its `aria-live` region alone cannot carry it; and the pass has not been driven by hand under VoiceOver, Narrator, or Orca.)
+  2026-07-09: `AccessibilityAnnouncer` now has all three backends, so overlay state reaches Narrator and Orca as well as VoiceOver - the overlay window is non-activating, so its `aria-live` region alone could never carry it.
+  Windows detects a screen reader through `SPI_GETSCREENREADER` and speaks by raising a UIA notification against the host provider of the overlay's `HWND`.
+  Linux watches `org.a11y.Status.ScreenReaderEnabled` on a worker thread, so toggling Orca mid-session is picked up without a restart, and speaks through a transient desktop notification: an AT-SPI `Announcement` is the right shape but only routes from a source registered with the a11y registry, which Verbatim has no accessible tree to provide.
+  Registering a minimal AT-SPI application root is the recorded upgrade path.
+  One gap keeps this open: the pass has not been driven by hand under VoiceOver, Narrator, or Orca, and the announcement leg of each backend can only be confirmed with the screen reader actually running.)
 
 ## M3 - Text polish (the differentiator)
 

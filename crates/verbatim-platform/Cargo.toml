@@ -76,6 +76,11 @@ ashpd = { version = "0.13", default-features = false, features = [
 ], optional = true }
 evdev = { version = "0.13", optional = true }
 wl-clipboard-rs = { version = "0.9", optional = true }
+# Screen-reader detection (org.a11y.Status) and overlay announcements go
+# straight to D-Bus; ashpd already pulls this zbus, so it costs no new tree.
+zbus = { version = "5", default-features = false, features = [
+    "tokio",
+], optional = true }
 futures-util = { version = "0.3", default-features = false, optional = true }
 # The portal/libei stack is async (zbus); the sync platform traits drive it
 # through a small owned current-thread runtime.
@@ -97,6 +102,7 @@ windows = { version = "0.61", optional = true, features = [
     "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_System_Threading",
+    "Win32_UI_Accessibility",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
@@ -134,6 +140,7 @@ linux-inject = [
     "dep:wl-clipboard-rs",
     "dep:tokio",
     "dep:futures-util",
+    "dep:zbus",
 ]
 # Compile the real Windows injection/clipboard/focus/hotkey seams. Off by
 # default so headless CI and the fake pipeline never touch Win32.
