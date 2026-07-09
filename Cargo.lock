@@ -5320,6 +5320,7 @@ dependencies = [
  "verbatim-engines",
  "windows 0.61.3",
  "wl-clipboard-rs",
+ "zbus",
 ]
 
 [[package]]

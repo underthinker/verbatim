@@ -21,7 +21,10 @@ use verbatim_core::event::{Event, EventBus};
 use verbatim_core::runner::{RunnerHandle, SessionRunner};
 use verbatim_engines::fake::FakeModelDownloader;
 use verbatim_platform::AccessibilityAnnouncer;
-#[cfg(not(all(feature = "real-injection", target_os = "macos")))]
+#[cfg(not(all(
+    feature = "real-injection",
+    any(target_os = "macos", target_os = "linux")
+)))]
 use verbatim_platform::fake::FakeAnnouncer;
 use verbatim_platform::fake::{FakePermissionProbe, FakePermissionRequester};
 
@@ -41,6 +44,48 @@ const DOCS_URL: &str = "https://underthinker.github.io/verbatim/";
 
 struct Shell {
     handle: RunnerHandle,
+}
+
+/// Pick the screen-reader announcer for this build (UX.md 8).
+///
+/// The real backends only exist under `real-injection`, so headless CI and the
+/// fake pipeline keep the no-screen-reader fake and touch no OS accessibility
+/// stack. Each OS reaches its screen reader differently: macOS posts an
+/// NSAccessibility announcement, Windows raises a UIA notification against the
+/// overlay window's host provider, and Linux watches `org.a11y.Status` and
+/// posts transient notifications Orca presents.
+#[cfg(all(feature = "real-injection", target_os = "macos"))]
+fn build_announcer(_overlay: &tauri::WebviewWindow) -> Arc<dyn AccessibilityAnnouncer> {
+    Arc::new(verbatim_platform::macos::MacAnnouncer::new())
+}
+
+/// The Windows announcer needs a window to hang the UIA host provider on; the
+/// overlay is the one that represents the announced state. A handle we cannot
+/// read leaves the app silent to Narrator rather than failing the launch.
+#[cfg(all(feature = "real-injection", target_os = "windows"))]
+fn build_announcer(overlay: &tauri::WebviewWindow) -> Arc<dyn AccessibilityAnnouncer> {
+    match overlay.hwnd() {
+        Ok(hwnd) => Arc::new(verbatim_platform::windows::WinAnnouncer::new(
+            hwnd.0 as isize,
+        )),
+        Err(err) => {
+            tracing::warn!(?err, "overlay HWND unavailable; announcements disabled");
+            Arc::new(FakeAnnouncer::default())
+        }
+    }
+}
+
+#[cfg(all(feature = "real-injection", target_os = "linux"))]
+fn build_announcer(_overlay: &tauri::WebviewWindow) -> Arc<dyn AccessibilityAnnouncer> {
+    Arc::new(verbatim_platform::linux::LinuxAnnouncer::new())
+}
+
+#[cfg(not(all(
+    feature = "real-injection",
+    any(target_os = "macos", target_os = "windows", target_os = "linux")
+)))]
+fn build_announcer(_overlay: &tauri::WebviewWindow) -> Arc<dyn AccessibilityAnnouncer> {
+    Arc::new(FakeAnnouncer::default())
 }
 
 /// The onboarding service, managed for the onboarding webview's commands.
@@ -426,16 +471,12 @@ pub fn run() -> ExitCode {
             spawn_event_bridge(app.handle().clone(), &events);
             // Overlay (Phase B): created hidden so ARMING can show it within
             // the < 50 ms budget; driven straight from the Rust bus.
-            overlay::create_window(app.handle())?;
-            // Real macOS announcer (VoiceOver detect + NSAccessibility post)
-            // under the real seams; the fake (no screen reader) everywhere else,
-            // including headless CI. Windows/Linux real backends are follow-ups.
-            #[cfg(all(feature = "real-injection", target_os = "macos"))]
-            let announcer: Arc<dyn AccessibilityAnnouncer> =
-                Arc::new(verbatim_platform::macos::MacAnnouncer::new());
-            #[cfg(not(all(feature = "real-injection", target_os = "macos")))]
-            let announcer: Arc<dyn AccessibilityAnnouncer> = Arc::new(FakeAnnouncer::default());
-            overlay::spawn_driver(app.handle().clone(), &events, announcer);
+            let overlay_window = overlay::create_window(app.handle())?;
+            overlay::spawn_driver(
+                app.handle().clone(),
+                &events,
+                build_announcer(&overlay_window),
+            );
             // Cross-platform tray (Phase E-4): a direct bus consumer like the
             // overlay; menu actions drive the same runner/config/history.
             tray::create(app.handle(), tray_handle, tray_history)?;
