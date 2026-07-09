@@ -68,6 +68,20 @@ body {
   border-bottom-color: var(--accent);
 }
 
+/* Visible to a screen reader, not to the eye: labels that the visual design
+   already carries through position or styling (UX.md 8). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Keyboard focus must stay visible on every control (UX.md 8). */
 .settings :focus-visible {
   outline: 2px solid var(--accent);
@@ -79,6 +93,20 @@ body {
 @media (forced-colors: active) {
   .settings :focus-visible {
     outline-color: Highlight;
+  }
+
+  /* Forced colors repaints the inactive tabs' transparent underline as
+     CanvasText, so every tab grows a rule and selection would be carried by
+     hue alone (Highlight against CanvasText). Take the underline off the
+     inactive tabs instead: selection becomes presence-of-rule, a shape
+     difference. The active rule must follow the base one - equal specificity. */
+  .settings__tab {
+    border-bottom-style: none;
+  }
+
+  .settings__tab--active {
+    border-bottom-style: solid;
+    border-bottom-color: Highlight;
   }
 }
 

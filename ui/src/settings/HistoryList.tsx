@@ -50,6 +50,11 @@ export default function HistoryList() {
 
   return (
     <div className="history">
+      {/* A focused button renaming itself is not reliably announced, so the
+          copy confirmation goes through a polite live region too. */}
+      <span className="sr-only" role="status">
+        {copied !== null ? "Copied raw transcript to the clipboard" : ""}
+      </span>
       <div className="history__header">
         <span className="settings__hint">{entries.length} recent</span>
         <button
@@ -67,16 +72,31 @@ export default function HistoryList() {
               <span className="models__sub">
                 {entry.appId} · {formatTime(entry.createdAt)}
               </span>
+              {/* The visible label flips to "Copied"; the accessible name has to
+                  flip with it, or a screen reader gets no confirmation at all. */}
               <button
-                aria-label={`Copy raw transcript from ${entry.appId} at ${formatTime(entry.createdAt)}`}
+                aria-label={
+                  copied === entry.id
+                    ? "Copied raw transcript to the clipboard"
+                    : `Copy raw transcript from ${entry.appId} at ${formatTime(entry.createdAt)}`
+                }
                 onClick={() => copyRaw(entry)}
               >
                 {copied === entry.id ? "Copied" : "Copy raw"}
               </button>
             </div>
-            <p className="history__raw">{entry.raw}</p>
+            {/* Sighted users tell the two apart by the accent rule and muted
+                colour; a screen reader hears two bare paragraphs, so each
+                carries its own off-screen label (UX.md 8). */}
+            <p className="history__raw">
+              <span className="sr-only">Raw transcript: </span>
+              {entry.raw}
+            </p>
             {entry.polished && entry.polished !== entry.raw && (
-              <p className="history__polished">{entry.polished}</p>
+              <p className="history__polished">
+                <span className="sr-only">Polished: </span>
+                {entry.polished}
+              </p>
             )}
           </li>
         ))}
