@@ -24,6 +24,18 @@ whisper-rs = { version = "0.16", optional = true, default-features = false, feat
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 whisper-rs = { version = "0.16", optional = true, default-features = false }
 
+# NVIDIA Parakeet transcription via sherpa-onnx (ARCHITECTURE.md 4.2, PRD 136),
+# behind the `sherpa-onnx` feature. `static` builds sherpa-onnx + onnxruntime
+# from source via cmake (needs a C++ toolchain at build time); the default
+# `download-binaries` feature is disabled because it vendors `ureq`, an
+# http-client `cargo deny` bans under the no-network security posture. Optional
+# and off by default so fake-only builds and CI pull none of it.
+[dependencies.sherpa-rs]
+version = "0.6"
+optional = true
+default-features = false
+features = ["static"]
+
 # Real llama.cpp text polish (ENGINEERING.md 2, ARCHITECTURE.md 4.3). Metal on
 # macOS mirrors the whisper split; other targets are CPU unless the Vulkan
 # feature is enabled. Optional so fake-only/CI builds pull none of it.
@@ -60,7 +72,7 @@ whisper-cpp = ["dep:whisper-rs"]
 # latency criterion; requires the Vulkan SDK (VULKAN_SDK env var) at build time.
 # GPU is tried first with CPU fallback (see WhisperCppEngine::load).
 whisper-vulkan = ["whisper-cpp", "whisper-rs/vulkan"]
-sherpa-onnx = []
+sherpa-onnx = ["dep:sherpa-rs"]
 # Real llama.cpp polish engine (ARCHITECTURE.md 4.3). Metal is compiled in on
 # macOS above; CPU elsewhere unless `llama-vulkan` adds the GPU backend.
 llama-cpp = ["dep:llama-cpp-2", "dep:encoding_rs"]
