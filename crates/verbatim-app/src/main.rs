@@ -39,6 +39,10 @@ enum Command {
     },
     /// Show the state of the running Verbatim instance.
     Status,
+    /// Print the local dogfood counters (completed dictations, crash-free
+    /// rate) for a tester report. Read from disk; no daemon needed. Never sent
+    /// anywhere.
+    Stats,
     /// Inject a sentinel string into the focused foreign app to verify the
     /// platform backend chain end-to-end (M1 acceptance, issue #18). Needs a
     /// `real-injection` build; confirm the sentinel lands to tick the box.
@@ -68,6 +72,13 @@ fn main() -> ExitCode {
         }
         Command::Trigger { verb } => block_on(run_trigger(verb)),
         Command::Status => block_on(run_status()),
+        Command::Stats => {
+            print!(
+                "{}",
+                verbatim_app::stats::report(&verbatim_app::config::data_dir())
+            );
+            ExitCode::SUCCESS
+        }
         Command::InjectSelftest { text } => {
             init_tracing();
             selftest::run(text)

@@ -323,6 +323,16 @@ fn spawn_history_recorder(history: Arc<History>, events: &EventBus) {
 /// the headless daemon).
 pub fn run() -> ExitCode {
     let events = Arc::new(EventBus::default());
+
+    // Dogfood counters (M4 Phase E): reconcile any crash from a prior run, then
+    // count each verified delivery. Local only; surfaced via `verbatim stats`.
+    let stats_dir = crate::config::data_dir();
+    crate::stats::begin_run(&stats_dir);
+    tauri::async_runtime::spawn(crate::stats::run_recorder(
+        events.subscribe(),
+        stats_dir.clone(),
+    ));
+
     let (runner, handle) = SessionRunner::new(
         daemon::build_deps(),
         Config::load().to_runner_config(),
@@ -427,6 +437,10 @@ pub fn run() -> ExitCode {
             Ok(())
         })
         .run(tauri::generate_context!());
+
+    // The webview loop returned, so this is an orderly shutdown: clear the
+    // marker so the next launch is not counted as a crash.
+    crate::stats::end_run_clean(&stats_dir);
 
     match result {
         Ok(()) => ExitCode::SUCCESS,
