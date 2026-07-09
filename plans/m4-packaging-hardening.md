@@ -117,6 +117,8 @@ End-user docs + README.
 
 Verification: a dogfood tester can resolve a permission error from the docs alone; docs link ships in the About dialog.
 
+(2026-07-08: content-first slice landed. `docs/site/` is an Astro Starlight site (config + package.json + content collection) with five pages - what-is / install / permissions / using / troubleshooting; the E1-E10 troubleshooting copy is kept in sync with `error_catalog.rs`. README rewritten end-user-first with a For-developers section below. About tab shows the docs address. Follow-ups: wire the Starlight build into CI + publish to Pages; one-click docs open in About needs the tauri opener plugin; screenshots pending the M2 shell captures.)
+
 ## Final phase - v1.0 sign-off
 
 1. Re-check all four M4 criteria + the PRD section 7 table with evidence; tick in a closing PR.

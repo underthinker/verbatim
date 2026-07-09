@@ -325,6 +325,14 @@ export default function Settings() {
               Verbatim runs fully on your machine. No audio or text ever leaves this
               computer.
             </p>
+            {/* ponytail: plain text, not a click-to-open link - opening an
+                external URL from the webview needs the tauri opener plugin
+                wired + a capability grant. Show the address so it always works;
+                upgrade to one-click open when the opener plugin lands. */}
+            <p className="settings__row">
+              <span>Documentation &amp; help</span>
+              <code>underthinker.github.io/verbatim</code>
+            </p>
             <fieldset className="settings__field">
               <legend>Model licenses</legend>
               <p className="settings__hint">
