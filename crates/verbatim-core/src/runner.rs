@@ -355,6 +355,15 @@ impl SessionRunner {
                 return;
             }
         };
+        // Nothing captured (hotkey released before the stream opened, or a
+        // silent buffer): a soft return to Idle, never an error dialog
+        // (UX.md 2). Handing an empty buffer to the engine surfaces its
+        // inference error as E3, which offers a "Retry" over no audio.
+        // ponytail: sample-count only; swap for the VAD verdict when one lands.
+        if audio.samples.is_empty() {
+            self.step(SessionInput::SilenceOnly);
+            return;
+        }
         if self.step(SessionInput::TailFlushed).is_none() {
             return;
         }

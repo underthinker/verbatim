@@ -32,6 +32,12 @@ fn run_impl(text: &str) -> ExitCode {
     /// Seconds to let the operator focus a target text field before we inject.
     const FOCUS_COUNTDOWN: u64 = 5;
 
+    /// The paste backend posts the keystroke and restores the clipboard from a
+    /// detached thread, both asynchronously. The long-lived daemon simply keeps
+    /// running; this one-shot CLI must outlive them, or it exits before the
+    /// target consumes the paste and before the restore lands.
+    const DRAIN: Duration = Duration::from_millis(1500);
+
     #[cfg(target_os = "macos")]
     let (injector, focus): (Box<dyn TextInjector>, Box<dyn FocusTracker>) = (
         Box::new(verbatim_platform::macos::MacTextInjector::new()),
@@ -75,6 +81,7 @@ fn run_impl(text: &str) -> ExitCode {
 
     match injector.inject(text, &target, InjectionStrategy::Auto) {
         Ok(receipt) => {
+            thread::sleep(DRAIN);
             println!(
                 "\nreceipt: backend={:?} verified={}",
                 receipt.backend, receipt.verified

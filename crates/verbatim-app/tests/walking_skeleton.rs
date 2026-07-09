@@ -623,3 +623,53 @@ async fn toggle_drives_a_full_start_stop_cycle() {
         vec!["hello from verbatim".to_owned()]
     );
 }
+
+/// A capture that yielded no samples - the hotkey released before the mic
+/// stream opened, as happens when the OS holds `audio.start()` on a permission
+/// prompt - returns softly to Idle. It must never reach the engine, whose
+/// empty-buffer inference error would surface as E3 and offer a "Retry" over
+/// no audio (UX.md 2: "no error dialog").
+#[tokio::test]
+async fn empty_capture_returns_to_idle_without_an_error() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let events = Arc::new(EventBus::default());
+    let mut receiver = events.subscribe();
+    let deps = RunnerDeps {
+        audio: Box::new(FakeAudioCapture::new(AudioBuffer {
+            samples: Vec::new(),
+            sample_rate_hz: PIPELINE_SAMPLE_RATE_HZ,
+        })),
+        transcription: Box::new(loaded_asr("should never be reached")),
+        polish: Box::new(loaded_polish()),
+        injector: Box::new(injector.clone()),
+        focus: Box::new(FakeFocusTracker::default()),
+    };
+    let (runner, handle) = SessionRunner::new(deps, RunnerConfig::default(), events);
+    tokio::spawn(runner.run());
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+
+    assert!(
+        injector.injected_texts().is_empty(),
+        "nothing was captured, so nothing may be injected"
+    );
+    let drained = drain(&mut receiver);
+    assert_eq!(
+        transition_targets(&drained),
+        vec![
+            SessionState::Arming,
+            SessionState::Recording,
+            SessionState::Finalizing,
+            SessionState::Idle,
+        ],
+        "an empty capture must skip the pipeline entirely"
+    );
+    assert!(
+        !drained
+            .iter()
+            .any(|event| matches!(event, Event::ErrorRaised { .. })),
+        "a silent recording is not an error"
+    );
+}

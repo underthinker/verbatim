@@ -16,6 +16,18 @@ fn e2e_enabled() -> bool {
     std::env::var_os("VERBATIM_MAC_E2E").is_some_and(|v| v == "1")
 }
 
+/// The real general pasteboard is process-wide shared state, and the test
+/// harness runs tests in parallel threads. Every test that writes it takes this
+/// lock, or they clobber each other's fixtures.
+static PASTEBOARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn lock_pasteboard() -> std::sync::MutexGuard<'static, ()> {
+    match PASTEBOARD.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 #[test]
 fn injector_probe_always_offers_a_last_resort() {
     // Whatever the AX trust state, the clipboard-only fallback must be present
@@ -78,6 +90,7 @@ fn clipboard_transient_write_then_restore_preserves_user_content() {
         eprintln!("skipping clipboard E2E; set VERBATIM_MAC_E2E=1 to run");
         return;
     }
+    let _serialized = lock_pasteboard();
     let guard = MacClipboardGuard::new();
 
     // Seed a known "user" clipboard, snapshot it, stage dictated text, then
@@ -114,5 +127,50 @@ fn focus_tracker_reports_the_frontmost_app() {
     assert!(
         !focused.app_id.is_empty(),
         "frontmost app id should be non-empty"
+    );
+}
+
+/// The paste backend restores the clipboard from a detached thread, so a second
+/// dictation can arrive while our own transient text is still on the pasteboard.
+/// `holds_our_transient` is what stops that dictation from snapshotting our text
+/// as "the user's clipboard" and later handing it back to them as if it were.
+#[test]
+fn transient_ownership_is_recognized_until_someone_else_writes() {
+    if !e2e_enabled() {
+        eprintln!("skipping: set VERBATIM_MAC_E2E=1 to exercise the real pasteboard");
+        return;
+    }
+    let _serialized = lock_pasteboard();
+    let guard = MacClipboardGuard::new();
+
+    // Nothing staged yet: the pasteboard is the user's, whatever it holds.
+    guard.set_persistent_text("user content").unwrap();
+    assert!(
+        !guard.holds_our_transient(),
+        "a clipboard we have not staged into is not ours"
+    );
+
+    let snapshot = guard.snapshot().unwrap();
+    guard.set_transient_text("dictated text").unwrap();
+    assert!(
+        guard.holds_our_transient(),
+        "our own transient write must be recognized as ours"
+    );
+
+    // The user copying something must hand ownership straight back.
+    guard.set_persistent_text("user copied this").unwrap();
+    assert!(
+        !guard.holds_our_transient(),
+        "a write after ours means the pasteboard is the user's again"
+    );
+
+    // And the delayed restore must then yield to them rather than clobber it.
+    assert_eq!(
+        guard.restore_if_unchanged(snapshot).unwrap(),
+        RestoreOutcome::UserModified
+    );
+    assert_eq!(
+        guard.snapshot().unwrap().text.as_deref(),
+        Some("user copied this")
     );
 }

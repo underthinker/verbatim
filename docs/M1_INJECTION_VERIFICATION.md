@@ -31,10 +31,25 @@ Run `scripts/verify-injection.sh` (macOS/Linux) or `pwsh scripts/verify-injectio
 For every platform: open a plain text editor, put the caret in it, keep it focused, trigger dictation, speak a known phrase, and confirm the exact text appears **in the editor** (not just on the clipboard).
 
 ### macOS
-- [ ] Grant Accessibility to the app (or the terminal running it).
-- [ ] Dictate into TextEdit; confirm text lands via `TransientPasteboardPaste` and the prior clipboard is restored.
-- [ ] Revoke Accessibility; confirm honest degrade to clipboard-only (E4 notice, text on clipboard).
+- [x] Grant Accessibility to the app (or the terminal running it).
+- [x] Dictate into TextEdit; confirm text lands via `TransientPasteboardPaste` and the prior clipboard is restored.
+- [x] Revoke Accessibility; confirm honest degrade to clipboard-only (E4 notice, text on clipboard).
 - Local seam E2E verified 2026-07-04 on Apple M5 (real NSPasteboard transient-write/restore + frontmost-app focus): `VERBATIM_MAC_E2E=1 cargo test -p verbatim-platform --features mac-inject --test macos_seams`.
+
+Verified 2026-07-09 on Apple M5 (macOS, Darwin 25.5), Accessibility granted to the host terminal:
+
+- Granted: `inject-selftest` probed `[TransientPasteboardPaste, CgEventTyping, ClipboardOnly]`, resolved the target as `com.apple.TextEdit`, and returned `backend=TransientPasteboardPaste verified=true`. The sentinel (ASCII + digits + CJK, exercising the 20-UTF-16-unit chunking) landed byte-for-byte in the TextEdit document, read back over Apple Events rather than by eye, and the prior clipboard was restored.
+- Revoked: the same run probed `[ClipboardOnly]` and returned `verified=false`. TextEdit stayed empty and the text was staged on the clipboard - the honest E4 degrade, no silent drop.
+- Full dictation: `verbatim daemon` built with `real-injection,real-audio,real-transcription,global-hotkey`, `ggml-base.en` resident, Right Option push-to-talk. Speech into TextEdit walked `Arming -> Recording -> Finalizing -> Transcribing -> Polishing -> Injecting -> Idle`. `Injecting -> Idle` is reachable only on a `verified` receipt (`runner.rs`, `SessionRunner::inject`), so reaching `Idle` is itself the proof that a real backend delivered.
+
+Boxes 2 and 3 are machine-checked rather than confirmed by eye. `VERBATIM_TEXTEDIT_E2E=1 scripts/verify-injection.sh` drives a real TextEdit document through `verbatim inject-selftest` and reads the result back over Apple Events, which needs no permission the injector does not already hold. The expectation is derived from the receipt the injector reports, so one command ticks box 2 when Accessibility is granted and box 3 when it is not; the two are the same experiment and only the honest receipt tells them apart.
+
+Two defects surfaced during this verification, both fixed:
+
+- The paste backend restored the clipboard 40 ms after posting Cmd-V. A target reads the pasteboard only when it processes the key event, and a *reading* app never bumps `changeCount`, so the restore always fired blind. Against a cold TextEdit this lost the race 3 times out of 3: the app pasted the user's **previous clipboard content** while the receipt still reported `verified = true`. If that clipboard held a secret, dictation typed it into the focused app. The restore now runs on a detached thread after a generous settle, off the injection path so it costs no latency.
+- An empty capture reached the transcription engine, whose empty-buffer inference error surfaced as `E3` with a "Retry" over no audio. `UX.md` 2 calls for a soft return to Idle; the state machine already defined `(Finalizing, SilenceOnly) -> Idle` and nothing emitted it.
+
+Investigated and dismissed: the first push-to-talk press after launch spent ~2.2 s in `Arming`, which is `audio.start()` blocking on the one-time macOS Microphone permission prompt, not a cold-start defect. A fresh daemon arms in ~117 ms cold and ~105 ms warm.
 
 ### Windows
 - [ ] Dictate into Notepad; confirm text lands via `SendInputUnicode`.
@@ -53,6 +68,6 @@ For every platform: open a plain text editor, put the caret in it, keep it focus
 
 ## Status
 
-- macOS: seam E2E verified on real hardware; foreground-app real-keypress check pending a controlled desktop run.
+- macOS: complete. Seam E2E plus all three manual real-keypress checks verified on Apple M5, 2026-07-09.
 - Windows: automated seams added; real-keypress + UIPI check pending a Windows machine.
 - Linux GNOME Wayland / KDE: automated seams present; portal/uinput real-keypress checks pending real desktop sessions.

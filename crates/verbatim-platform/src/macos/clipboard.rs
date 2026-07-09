@@ -39,6 +39,20 @@ impl MacClipboardGuard {
         NSPasteboard::generalPasteboard()
     }
 
+    /// Whether the pasteboard still holds our own most recent transient write,
+    /// i.e. nobody has written since. The paste backend restores asynchronously,
+    /// so a second dictation can arrive while our staged text is still up;
+    /// snapshotting then would capture our own text as "the user's clipboard"
+    /// and the delayed restore would hand it back to them.
+    pub fn holds_our_transient(&self) -> bool {
+        let transient = self.transient_change_count.load(Ordering::SeqCst);
+        // A zero counter means we have never staged anything.
+        if transient == 0 {
+            return false;
+        }
+        Self::general().changeCount() == transient
+    }
+
     /// Write `text` as an ordinary (non-transient) clipboard entry. Used by the
     /// clipboard-only injection fallback, where the user pastes manually (E4).
     pub fn set_persistent_text(&self, text: &str) -> Result<(), ClipboardError> {

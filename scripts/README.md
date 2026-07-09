@@ -44,6 +44,23 @@ because it touches the real clipboard/focus), then prints the manual real-keypre
 checklist for that platform - including the GNOME/KDE portal `restore_token` and
 Windows elevated-window UIPI cases. Record results in issue #18.
 
+On macOS the two "text lands in the editor" boxes are machine-checkable:
+
+```sh
+VERBATIM_TEXTEDIT_E2E=1 scripts/verify-injection.sh
+```
+
+This drives a real TextEdit document through `verbatim inject-selftest` and reads
+the result back over Apple Events, instead of asking the operator to confirm by
+eye. It derives its expectation from the receipt the injector reports, so the same
+run ticks the granted box (text lands via `TransientPasteboardPaste`, prior
+clipboard restored) or the revoked one (nothing typed, text staged on the
+clipboard, E4). It takes over TextEdit for a few seconds and refuses to inject
+unless TextEdit is genuinely frontmost, so leave the machine alone while it runs.
+
+This check is what caught the paste/restore race that made a cold target receive
+the user's previous clipboard content instead of the dictation.
+
 See [docs/M1_INJECTION_VERIFICATION.md](../docs/M1_INJECTION_VERIFICATION.md) for
 the full two-layer verification strategy.
 
