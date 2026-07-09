@@ -13,6 +13,12 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   GGML_NO_I8MM: 1
+  # llama.cpp vendors cpp-httplib, which auto-enables OpenSSL when CMake finds
+  # it. On the macOS arm64 runner the OpenSSL include dir isn't propagated to
+  # the httplib target, so it fails on `openssl/err.h`. We build with server /
+  # tools / curl all OFF, so httplib never needs TLS - tell CMake not to find
+  # OpenSSL at all. llama-cpp-sys-2 forwards CMAKE_* env vars to the CMake build.
+  CMAKE_DISABLE_FIND_PACKAGE_OpenSSL: "ON"
 
 jobs:
   lint:
