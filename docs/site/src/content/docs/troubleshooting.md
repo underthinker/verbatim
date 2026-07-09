@@ -96,6 +96,15 @@ Click **Polish settings** to check your polish model, or continue in raw mode if
 
 Note: when polish simply runs out of time on a slow machine, Verbatim silently types the raw text with no message at all - that's by design and isn't an error.
 
+## macOS says Verbatim is damaged, or Windows blocks the installer
+
+Not an error code, and not a corrupted download.
+Verbatim's builds are unsigned, so Gatekeeper and SmartScreen both refuse them until you confirm once.
+The [Install](/install/) page has the exact steps for each OS.
+
+If macOS re-asks for Microphone or Accessibility after you update Verbatim, that is the same root cause: an unsigned app is identified by its bytes, so a new version looks like a new app.
+Grant the permission again and carry on.
+
 ## Still stuck?
 
 - Run `verbatim status` to confirm the background instance is alive.

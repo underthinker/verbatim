@@ -29,7 +29,10 @@ System Settings -> Privacy & Security -> Accessibility -> enable Verbatim.
 If typing silently fails and your text lands on the clipboard instead, Accessibility is the usual cause - see [E4](/troubleshooting/#e4---couldnt-type-into-this-app).
 
 Verbatim deliberately does **not** run in the App Sandbox, because sandboxed apps can't use Accessibility to type into other apps.
-The build is still signed, notarized, and hardened.
+
+Because the build is unsigned, macOS keys these two grants to the exact bytes of the app rather than to a signing certificate.
+Installing a new version therefore clears both grants, and Verbatim asks for them again on the next dictation.
+The stale entries left behind in System Settings are harmless; you can remove them with the **-** button.
 
 ## Windows
 

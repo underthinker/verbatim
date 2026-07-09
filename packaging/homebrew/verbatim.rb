@@ -19,9 +19,8 @@ cask "verbatim" do
   desc "Privacy-first, fully local dictation - hotkey to polished text, no cloud"
   homepage "https://github.com/underthinker/verbatim"
 
-  # Verbatim self-updates through its own hash-verified channel mechanism; keep
-  # Homebrew from also nagging about the same upgrade.
-  auto_updates true
+  # No `auto_updates` stanza: Verbatim has no in-app updater (post-v1 backlog),
+  # so Homebrew is the update mechanism for this channel and must keep bumping it.
   depends_on macos: ">= :big_sur" # matches tauri minimumSystemVersion 11.0
 
   app "Verbatim.app"

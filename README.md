@@ -11,9 +11,13 @@ No telemetry, no account, no subscription.
 
 | Platform | Recommended | Also available |
 |---|---|---|
-| macOS (Apple Silicon + Intel) | `brew install --cask verbatim` | `.dmg` (signed + notarized) |
-| Windows 11 | `winget install Verbatim` | `.msi` (Authenticode-signed) |
+| macOS (Apple Silicon + Intel) | `brew install --cask --no-quarantine verbatim` | `.dmg` |
+| Windows 11 | `winget install Verbatim` | `.msi` |
 | Linux | `flatpak install flathub app.verbatim.Verbatim` | AppImage, `.deb` |
+
+Builds are **not code-signed** - Verbatim doesn't pay for an Apple Developer ID or an Authenticode certificate.
+macOS and Windows each show a one-time warning to click past; releases ship SHA-256 checksums and an SBOM so you can verify what you downloaded.
+See [Install](docs/site/src/content/docs/install.md) for the exact steps.
 
 Then grant the microphone (and, on macOS, Accessibility) permission when Verbatim asks.
 Full per-channel and per-OS instructions are in the [documentation](docs/site/src/content/docs/).
