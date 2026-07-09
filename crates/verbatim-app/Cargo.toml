@@ -39,6 +39,11 @@ verbatim-core.workspace = true
 verbatim-engines.workspace = true
 verbatim-platform.workspace = true
 
+[dev-dependencies]
+# `test-util` gives paused-time control so the IPC read-timeout test resolves
+# instantly instead of waiting out the real deadline.
+tokio = { workspace = true, features = ["test-util"] }
+
 [features]
 # Serve the webview from the embedded `ui/dist` assets instead of the Vite dev
 # server. The Tauri CLI enables this automatically on `tauri build`; a plain

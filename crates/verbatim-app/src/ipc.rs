@@ -19,6 +19,13 @@ pub const SOCKET_FILE: &str = "verbatim.sock";
 /// The environment override for the socket path (tests, non-default installs).
 pub const SOCKET_ENV: &str = "VERBATIM_SOCK";
 
+/// The largest request line the daemon will read before giving up. Every valid
+/// request is a short verb (`toggle\n` is the longest at 7 bytes); this cap
+/// keeps a same-uid client that never sends a newline from growing the read
+/// buffer without bound (threat model F1). Generous vs. the real max so future
+/// verbs fit without a bump.
+pub const MAX_REQUEST_BYTES: u64 = 64;
+
 /// The one and only set of verbs a client may send. `Cancel` is intentionally
 /// absent: discarding is a local ESC action, not a remotely triggerable one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,6 +185,70 @@ mod tests {
                 Request::parse(hostile).is_err(),
                 "must reject non-verb payload: {hostile:?}"
             );
+        }
+    }
+
+    #[test]
+    fn parser_never_panics_and_only_the_closed_set_parses() {
+        // Fuzz corpus for the wire protocol (threat model F4). The parser must
+        // (a) never panic on any input and (b) accept nothing outside the four
+        // exact verbs, so no crafted payload is ever interpreted as text to
+        // inject. Binary/non-UTF-8 bytes cannot reach here at all - the daemon
+        // reads the request with `read_line`, which errors on invalid UTF-8
+        // before parse is called - so this corpus covers the UTF-8 space.
+        //
+        // ponytail: table-driven corpus, not cargo-fuzz. The grammar is four
+        // fixed tokens; an exhaustive-by-construction table is stronger signal
+        // than random bytes here. Promote to a cargo-fuzz target only if the
+        // protocol ever grows arguments or structure.
+        let hostile = [
+            // Injection-shaped payloads: must never be treated as text.
+            "inject: rm -rf ~",
+            "type hello world",
+            "start; rm -rf /",
+            "toggle\nstart",
+            "status\r\nstart",
+            // Verb look-alikes and affixes.
+            "START",
+            "Start",
+            "starts",
+            "start now",
+            "startstop",
+            "sto",
+            "stopp",
+            // Empty / whitespace / control noise.
+            "",
+            " ",
+            "\n",
+            "\r\n",
+            "\0",
+            "start\0",
+            "\u{202e}start",
+            // Overlong / adversarial length (still under the read cap here, but
+            // parse must not care about size).
+            &"a".repeat(10_000),
+            &format!("start{}", "x".repeat(10_000)),
+        ];
+
+        for input in hostile {
+            // The only accepted inputs are the four exact verbs; none of these
+            // are bare verbs, so parse must reject every one. A panic here means
+            // the parser widened, not that the corpus is wrong.
+            if let Ok(accepted) = Request::parse(input) {
+                panic!("hostile payload was accepted: {input:?} -> {accepted:?}");
+            }
+        }
+
+        // And the whitelist still works, including with the trailing newline the
+        // wire always carries and surrounding whitespace `trim` must absorb.
+        for (line, want) in [
+            ("start\n", Request::Trigger(Verb::Start)),
+            ("stop\n", Request::Trigger(Verb::Stop)),
+            ("toggle\n", Request::Trigger(Verb::Toggle)),
+            ("status\n", Request::Status),
+            ("  toggle  \n", Request::Trigger(Verb::Toggle)),
+        ] {
+            assert_eq!(Request::parse(line), Ok(want));
         }
     }
 

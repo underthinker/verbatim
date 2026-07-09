@@ -9,7 +9,7 @@ From ROADMAP.md M4:
 - [ ] All PRD section 7 success criteria pass, measured and recorded.
 - [ ] Signed installers on all channels; clean-machine installs verified.
 - [ ] Crash-free rate > 99.5% over a 2-week dogfood with >= 5 external testers across the three OSes.
-- [ ] Security review of the injection IPC surface (trigger verbs only) done.
+- [x] Security review of the injection IPC surface (trigger verbs only) done. (2026-07-08, Phase D: `docs/THREAT_MODEL.md` + IPC hardening F1/F2 fixed with regression tests, F3/F4 dispositioned.)
 
 ## Current state (verified 2026-07-08)
 
