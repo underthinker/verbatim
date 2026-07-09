@@ -7,7 +7,15 @@
 //! target, so a clean post is the strongest signal we have and is reported as
 //! `verified`. The clipboard-only last resort stages text for the user to paste
 //! and is therefore reported `verified = false` (E4).
+//!
+//! The paste backend restores the user's clipboard from a detached thread rather
+//! than inline: the target reads the pasteboard when it processes the
+//! synthesized Cmd-V, which can be long after `inject` returns, and a reading
+//! app never bumps `changeCount` so there is no signal that it consumed the
+//! text. Restoring inline handed cold apps the user's previous clipboard instead
+//! of the dictation.
 
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -18,7 +26,9 @@ use crate::errors::InjectError;
 use crate::macos::clipboard::MacClipboardGuard;
 use crate::macos::ffi::{ax_trusted, secure_input_enabled};
 use crate::traits::{ClipboardGuard, TextInjector};
-use crate::types::{FocusedApp, InjectionBackend, InjectionReceipt, InjectionStrategy};
+use crate::types::{
+    ClipboardSnapshot, FocusedApp, InjectionBackend, InjectionReceipt, InjectionStrategy,
+};
 
 /// `kVK_ANSI_V`: virtual keycode for the V key, used to synthesize Cmd-V.
 const KEYCODE_V: u16 = 0x09;
@@ -27,20 +37,57 @@ const KEYCODE_V: u16 = 0x09;
 /// event; chunk longer text so nothing is silently truncated.
 const MAX_UTF16_PER_EVENT: usize = 20;
 
-/// Let the target app process the synthesized Cmd-V before we restore the
-/// clipboard. Short enough to be imperceptible, long enough to be reliable.
-const PASTE_SETTLE: Duration = Duration::from_millis(40);
+/// How long the staged text must stay on the pasteboard for the target app to
+/// read it. A synthesized Cmd-V is delivered asynchronously: the app reads the
+/// pasteboard whenever it gets round to handling the key event, and a *reading*
+/// app never bumps `changeCount`, so we have no signal that it consumed the
+/// text. Restoring too early hands the target the user's previous clipboard
+/// instead of the dictation - observed deterministically against a cold TextEdit
+/// at 40 ms. The wait is generous and runs off the injection path, so it costs
+/// no latency; the worst case is that a Cmd-V by the user inside the window
+/// pastes their own dictation back.
+const PASTE_SETTLE: Duration = Duration::from_millis(500);
 
 /// macOS [`TextInjector`]. Owns the clipboard discipline for its paste backend;
 /// holds no ObjC state, so it is `Send + Sync`.
 #[derive(Default)]
 pub struct MacTextInjector {
-    clipboard: MacClipboardGuard,
+    /// Shared with the detached restore thread, which outlives the `inject` call.
+    clipboard: Arc<MacClipboardGuard>,
+    /// The user's clipboard as of the last time it was actually theirs. Held
+    /// across a pending restore so back-to-back dictations restore the user's
+    /// content rather than the previous dictation's text.
+    user_snapshot: Mutex<Option<ClipboardSnapshot>>,
 }
 
 impl MacTextInjector {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The user's clipboard content to restore after the paste. While our own
+    /// transient write is still up (a restore is pending), the pasteboard is not
+    /// the user's, so reuse the snapshot taken before we first staged.
+    fn user_snapshot(&self) -> Result<ClipboardSnapshot, InjectError> {
+        // A panicking restore thread must not wedge injection; the guarded value
+        // is a plain snapshot, so the poisoned contents are still sound to use.
+        let mut cached = match self.user_snapshot.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if cached.is_none() || !self.clipboard.holds_our_transient() {
+            *cached = Some(self.clipboard.snapshot().map_err(|err| {
+                clipboard_failure(InjectionBackend::TransientPasteboardPaste, err)
+            })?);
+        }
+        match cached.clone() {
+            Some(snapshot) => Ok(snapshot),
+            // Unreachable: the branch above populates it.
+            None => Err(InjectError::Backend {
+                backend: InjectionBackend::TransientPasteboardPaste,
+                reason: "clipboard snapshot unavailable".to_owned(),
+            }),
+        }
     }
 
     fn event_source() -> Result<CGEventSource, InjectError> {
@@ -57,21 +104,26 @@ impl MacTextInjector {
     /// they changed it in the meantime.
     fn inject_paste(&self, text: &str) -> Result<InjectionReceipt, InjectError> {
         let backend = InjectionBackend::TransientPasteboardPaste;
-        let snapshot = self
-            .clipboard
-            .snapshot()
-            .map_err(|err| clipboard_failure(backend, err))?;
+        let snapshot = self.user_snapshot()?;
         self.clipboard
             .set_transient_text(text)
             .map_err(|err| clipboard_failure(backend, err))?;
 
         self.post_cmd_v()?;
-        thread::sleep(PASTE_SETTLE);
 
-        // A failed restore must not fail the injection; the text already landed.
-        if let Err(err) = self.clipboard.restore_if_unchanged(snapshot) {
-            tracing::warn!(?err, "clipboard restore after paste failed");
-        }
+        // The staged text must outlive this call: the target reads the pasteboard
+        // when it processes the synthesized Cmd-V, which may be well after we
+        // return. Restoring on a detached thread keeps the dictation latency
+        // budget free of the settle. `restore_if_unchanged` still yields to the
+        // user if they copied something in the meantime.
+        let clipboard = Arc::clone(&self.clipboard);
+        thread::spawn(move || {
+            thread::sleep(PASTE_SETTLE);
+            // A failed restore must not fail the injection; the text already landed.
+            if let Err(err) = clipboard.restore_if_unchanged(snapshot) {
+                tracing::warn!(?err, "clipboard restore after paste failed");
+            }
+        });
         Ok(InjectionReceipt {
             backend,
             verified: true,

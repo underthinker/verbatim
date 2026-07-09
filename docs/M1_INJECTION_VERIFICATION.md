@@ -42,7 +42,14 @@ Verified 2026-07-09 on Apple M5 (macOS, Darwin 25.5), Accessibility granted to t
 - Revoked: the same run probed `[ClipboardOnly]` and returned `verified=false`. TextEdit stayed empty and the text was staged on the clipboard - the honest E4 degrade, no silent drop.
 - Full dictation: `verbatim daemon` built with `real-injection,real-audio,real-transcription,global-hotkey`, `ggml-base.en` resident, Right Option push-to-talk. Speech into TextEdit walked `Arming -> Recording -> Finalizing -> Transcribing -> Polishing -> Injecting -> Idle`. `Injecting -> Idle` is reachable only on a `verified` receipt (`runner.rs`, `SessionRunner::inject`), so reaching `Idle` is itself the proof that a real backend delivered.
 
-One defect surfaced during this run and is tracked separately: the first dictation after a cold start loses its utterance, because lazy Metal/GPU context init runs inside `Arming` and can hold it for ~2.2 s, so a normal-length push-to-talk hold releases before capture begins and transcription fails `E3` on an empty sample buffer.
+Boxes 2 and 3 are machine-checked rather than confirmed by eye. `VERBATIM_TEXTEDIT_E2E=1 scripts/verify-injection.sh` drives a real TextEdit document through `verbatim inject-selftest` and reads the result back over Apple Events, which needs no permission the injector does not already hold. The expectation is derived from the receipt the injector reports, so one command ticks box 2 when Accessibility is granted and box 3 when it is not; the two are the same experiment and only the honest receipt tells them apart.
+
+Two defects surfaced during this verification, both fixed:
+
+- The paste backend restored the clipboard 40 ms after posting Cmd-V. A target reads the pasteboard only when it processes the key event, and a *reading* app never bumps `changeCount`, so the restore always fired blind. Against a cold TextEdit this lost the race 3 times out of 3: the app pasted the user's **previous clipboard content** while the receipt still reported `verified = true`. If that clipboard held a secret, dictation typed it into the focused app. The restore now runs on a detached thread after a generous settle, off the injection path so it costs no latency.
+- An empty capture reached the transcription engine, whose empty-buffer inference error surfaced as `E3` with a "Retry" over no audio. `UX.md` 2 calls for a soft return to Idle; the state machine already defined `(Finalizing, SilenceOnly) -> Idle` and nothing emitted it.
+
+Investigated and dismissed: the first push-to-talk press after launch spent ~2.2 s in `Arming`, which is `audio.start()` blocking on the one-time macOS Microphone permission prompt, not a cold-start defect. A fresh daemon arms in ~117 ms cold and ~105 ms warm.
 
 ### Windows
 - [ ] Dictate into Notepad; confirm text lands via `SendInputUnicode`.
