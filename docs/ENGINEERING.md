@@ -104,7 +104,7 @@ GitHub Actions:
 
 - No network code outside the model downloader (fixed HTTPS hosts, hash-verified) and the distribution channels' own update mechanics; CI asserts no other outbound-capable dependencies (`cargo deny` ban-list on http client crates outside the downloader crate).
 - All user data (audio buffers, transcripts, history, dictionary) stays in the platform data dir; temp audio files are deleted after successful transcription and on startup sweep.
-- Threat model doc is a v1.0 deliverable: injection capability misuse (uinput/Accessibility) is the sensitive surface; the binary must never expose an IPC surface that lets *other* processes inject text through us. The daemon listens on a Unix domain socket restricted to owner-only (`0o600`); the wire protocol (`ipc.rs`) accepts a closed set of trigger verbs (`start`/`stop`/`toggle`) plus `status` — any other payload is rejected before interpretation, never treated as text to inject. `Cancel` is deliberately absent from the protocol (ESC discard is local only).
+- Threat model: see [THREAT_MODEL.md](THREAT_MODEL.md) (M4 Phase D - IPC surface review + injection/download/update analysis). Injection capability misuse (uinput/Accessibility) is the sensitive surface; the binary must never expose an IPC surface that lets *other* processes inject text through us. The daemon listens on a Unix domain socket restricted to owner-only (`0o600`); the wire protocol (`ipc.rs`) accepts a closed set of trigger verbs (`start`/`stop`/`toggle`) plus `status` — any other payload is rejected before interpretation, never treated as text to inject. `Cancel` is deliberately absent from the protocol (ESC discard is local only).
 
 ## 9. Definition of done (any feature)
 

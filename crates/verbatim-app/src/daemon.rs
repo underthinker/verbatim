@@ -7,8 +7,9 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 
 use verbatim_core::event::EventBus;
 use verbatim_core::runner::{RunnerDeps, RunnerHandle, SessionRunner};
@@ -460,15 +461,30 @@ async fn shutdown_signal() {
     }
 }
 
+/// How long the daemon waits for a client to send its (tiny) request line
+/// before dropping the connection. A client that connects and never speaks must
+/// not pin a task forever (threat model F2); the real client sends immediately.
+const READ_TIMEOUT: Duration = Duration::from_secs(5);
+
 async fn handle_connection<S>(stream: S, handle: RunnerHandle) -> std::io::Result<()>
 where
     S: AsyncRead + AsyncWrite,
 {
     let (reader, mut writer) = tokio::io::split(stream);
-    let mut reader = BufReader::new(reader);
+    // `.take` caps the bytes read so a client that never sends a newline cannot
+    // grow the buffer without bound; the timeout caps how long we wait for the
+    // line at all. Both are defense-in-depth: the socket is owner-only, so the
+    // peer is same-uid, but a buggy or wedged client must not wedge the daemon.
+    let mut reader = BufReader::new(reader).take(crate::ipc::MAX_REQUEST_BYTES);
     let mut line = String::new();
-    if reader.read_line(&mut line).await? == 0 {
-        return Ok(());
+    match tokio::time::timeout(READ_TIMEOUT, reader.read_line(&mut line)).await {
+        // Clean EOF before any verb: client hung up, nothing to answer.
+        Ok(Ok(0)) => return Ok(()),
+        Ok(Ok(_)) => {}
+        // A malformed/oversized line that is not valid UTF-8, or an I/O error.
+        Ok(Err(err)) => return Err(err),
+        // Client sat silent past the deadline: drop it, do not answer.
+        Err(_elapsed) => return Ok(()),
     }
 
     let response = match Request::parse(&line) {
@@ -611,6 +627,55 @@ mod tests {
         let moved = std::iter::from_fn(|| events.try_recv().ok())
             .any(|event| matches!(event, Event::SessionTransition { .. }));
         assert!(!moved, "a rejected payload must not move the session");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// F1: a client that floods bytes with no newline must not grow the read
+    /// buffer without bound. The read is capped at `MAX_REQUEST_BYTES`; the
+    /// truncated line is not a verb, so it is rejected and moves nothing.
+    #[tokio::test]
+    async fn oversized_payload_is_bounded_and_rejected() {
+        let path = temp_socket();
+        let (_handle, mut events) = spawn_served(&path);
+
+        // Far more than the cap, and deliberately no trailing newline.
+        let flood = "a".repeat((crate::ipc::MAX_REQUEST_BYTES as usize) * 100);
+        let reply = request(&path, &flood).await;
+        assert!(
+            reply.starts_with("error"),
+            "oversized payload must be rejected, got: {reply}"
+        );
+
+        let moved = std::iter::from_fn(|| events.try_recv().ok())
+            .any(|event| matches!(event, Event::SessionTransition { .. }));
+        assert!(!moved, "an oversized payload must not move the session");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// F2: a client that connects and never sends its request line must be
+    /// dropped, not pin a task forever. Under paused time the runtime
+    /// auto-advances to the read deadline once idle, so the daemon closes the
+    /// connection (empty reply) without ever moving the session.
+    #[tokio::test(start_paused = true)]
+    async fn silent_client_times_out_without_hanging() {
+        let path = temp_socket();
+        let (_handle, mut events) = spawn_served(&path);
+
+        let stream = connect_retry(&path).await;
+        let (reader, _writer) = tokio::io::split(stream);
+        let mut reader = BufReader::new(reader);
+        let mut reply = String::new();
+        // The daemon closes the connection at the read deadline, so this
+        // resolves to EOF (0 bytes) instead of hanging.
+        let read = reader.read_line(&mut reply).await.unwrap();
+        assert_eq!(read, 0, "timed-out connection should close with no reply");
+        assert!(reply.is_empty());
+
+        let moved = std::iter::from_fn(|| events.try_recv().ok())
+            .any(|event| matches!(event, Event::SessionTransition { .. }));
+        assert!(!moved, "a silent connection must not move the session");
 
         let _ = std::fs::remove_file(&path);
     }
