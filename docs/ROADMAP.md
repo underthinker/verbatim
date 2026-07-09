@@ -37,6 +37,8 @@ Acceptance criteria:
 - [x] Every UX error state is reachable in a test harness and shows its designed response; zero dead ends.
 - [ ] Overlay never takes focus (verified on KDE, the spike 1 regression case) and respects reduced-motion.
 - [ ] Accessibility pass: keyboard-only navigation, screen-reader labels, no color-only signaling.
+  (2026-07-09: markup pass done. Tablist takes Home/End and its panel is focusable, so the control-free Dictation panel is reachable; onboarding moves focus to the new step's heading; history rows name raw vs polished off-screen rather than by rule-and-hue alone; the copy confirmation, the try-it state word, and the interrupted download reach a live region. Forced-colors restores the step dots, the download bar, and the selected tab, all of which lost their only signal when the accent background flattened. `eslint-plugin-jsx-a11y` (strict) now runs in the `pnpm lint` CI job as the standing guard.
+  Two gaps keep this open: `AccessibilityAnnouncer` has a macOS implementation only, so overlay state never reaches Narrator or Orca - the overlay window is non-activating, so its `aria-live` region alone cannot carry it; and the pass has not been driven by hand under VoiceOver, Narrator, or Orca.)
 
 ## M3 - Text polish (the differentiator)
 

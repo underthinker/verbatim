@@ -4,7 +4,7 @@
 // is sequencing and presentation only.
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { stateLabel, UiEvent, VERBATIM_EVENT } from "../events";
 import {
@@ -191,7 +191,9 @@ function ModelStep({ onReady }: { onReady: () => void }) {
           )}
           {error !== null && (
             <div className="actions">
-              <p className="err">Download interrupted.</p>
+              <p className="err" role="alert">
+                Download interrupted.
+              </p>
               <button className="primary" onClick={start}>
                 Resume download
               </button>
@@ -230,7 +232,10 @@ function TryItStep() {
         <button className="primary" onClick={() => invoke("trigger", { verb: "toggle" })}>
           Start / stop dictation
         </button>
-        <span className="muted">state: {state}</span>
+        {/* The only feedback this step gives is the state word; announce it. */}
+        <span className="muted" role="status">
+          state: {state}
+        </span>
       </div>
     </div>
   );
@@ -264,6 +269,26 @@ export default function Onboarding() {
   const [micOk, setMicOk] = useState(false);
   const [typingOk, setTypingOk] = useState(false);
   const step: Step = STEPS[index];
+  const rootRef = useRef<HTMLElement>(null);
+
+  // Advancing a step swaps the whole screen but leaves focus on the (now
+  // re-labelled) Continue button, so a screen reader never announces the new
+  // screen. Move focus to the step's heading instead (UX.md 8). The heading is
+  // made focusable on the fly rather than every screen carrying a tabIndex it
+  // only needs for this. Skipped on first render: stealing focus before the
+  // user has acted is its own bug.
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    const heading = rootRef.current?.querySelector("h1");
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus();
+    }
+  }, [index]);
 
   const next = useCallback(() => setIndex((i) => Math.min(i + 1, STEPS.length - 1)), []);
   const back = useCallback(() => setIndex((i) => Math.max(i - 1, 0)), []);
@@ -277,7 +302,7 @@ export default function Onboarding() {
     step === "microphone" ? micOk : step === "typing" ? typingOk : true;
 
   return (
-    <main className="onboarding">
+    <main className="onboarding" ref={rootRef}>
       {step === "welcome" && (
         <div className="screen">
           <h1>Welcome to Verbatim</h1>
@@ -316,9 +341,23 @@ export default function Onboarding() {
           </button>
         )}
         {step !== "polish" && (
-          <button className="primary" onClick={next} disabled={!canAdvance}>
-            {step === "welcome" ? "Get started" : "Continue"}
-          </button>
+          <>
+            {/* A disabled button is skipped by Tab, so the reason it is disabled
+                has to be readable from the step itself. */}
+            {!canAdvance && (
+              <span id="gate-reason" className="sr-only">
+                Grant this permission to continue.
+              </span>
+            )}
+            <button
+              className="primary"
+              onClick={next}
+              disabled={!canAdvance}
+              aria-describedby={canAdvance ? undefined : "gate-reason"}
+            >
+              {step === "welcome" ? "Get started" : "Continue"}
+            </button>
+          </>
         )}
       </nav>
     </main>

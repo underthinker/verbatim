@@ -31,12 +31,16 @@ export default function Settings() {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Roving arrow-key navigation between tabs (WAI-ARIA tablist, UX.md 8).
+  // Home/End jump to the ends, as the pattern requires.
   const onTabKey = (e: React.KeyboardEvent, i: number) => {
-    const delta =
-      e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-    if (delta === 0) return;
+    const next =
+      e.key === "ArrowRight" ? (i + 1) % TABS.length
+      : e.key === "ArrowLeft" ? (i - 1 + TABS.length) % TABS.length
+      : e.key === "Home" ? 0
+      : e.key === "End" ? TABS.length - 1
+      : -1;
+    if (next === -1) return;
     e.preventDefault();
-    const next = (i + delta + TABS.length) % TABS.length;
     setTab(TABS[next]);
     tabRefs.current[next]?.focus();
   };
@@ -47,7 +51,11 @@ export default function Settings() {
   }, []);
 
   if (!config) {
-    return <main className="settings settings--loading">Loading settings...</main>;
+    return (
+      <main className="settings settings--loading" role="status" aria-busy="true">
+        Loading settings...
+      </main>
+    );
   }
 
   // One updater for every field; edits are local until Save.
@@ -121,11 +129,14 @@ export default function Settings() {
         ))}
       </div>
 
+      {/* tabIndex 0: the Dictation panel holds no focusable control, so without
+          it a keyboard user can neither reach nor scroll that panel. */}
       <section
         className="settings__panel"
         role="tabpanel"
         id={`panel-${tab}`}
         aria-labelledby={`tab-${tab}`}
+        tabIndex={0}
       >
         {tab === "General" && (
           <>
