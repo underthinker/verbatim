@@ -117,7 +117,9 @@ End-user docs + README.
 
 Verification: a dogfood tester can resolve a permission error from the docs alone; docs link ships in the About dialog.
 
-(2026-07-08: content-first slice landed. `docs/site/` is an Astro Starlight site (config + package.json + content collection) with five pages - what-is / install / permissions / using / troubleshooting; the E1-E10 troubleshooting copy is kept in sync with `error_catalog.rs`. README rewritten end-user-first with a For-developers section below. About tab shows the docs address. Follow-ups: wire the Starlight build into CI + publish to Pages; one-click docs open in About needs the tauri opener plugin; screenshots pending the M2 shell captures.)
+(2026-07-08: content-first slice landed. `docs/site/` is an Astro Starlight site (config + package.json + content collection) with five pages - what-is / install / permissions / using / troubleshooting; the E1-E10 troubleshooting copy is kept in sync with `error_catalog.rs`. README rewritten end-user-first with a For-developers section below. About tab shows the docs address.)
+
+(2026-07-09: build + link follow-ups landed. `.github/workflows/docs.yml` builds the site on every PR touching `docs/site/` and deploys `main` to GitHub Pages; `pnpm-lock.yaml` committed. The About tab's docs address is now a one-click open through the `open_docs` Tauri command (`tauri-plugin-opener`, URL held in Rust so the webview cannot open arbitrary URLs); a unit test pins `DOCS_URL` to the Starlight `site` config. Remaining: GitHub Pages must be enabled on the repo with source "GitHub Actions" before the first deploy succeeds; screenshots still pending M2 shell captures.)
 
 ## Final phase - v1.0 sign-off
 

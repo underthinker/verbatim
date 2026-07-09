@@ -3,8 +3,8 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
 // End-user docs site (M4 Phase F). Versioned with the repo; content lives in
-// src/content/docs/. Build/CI wiring is a follow-up - the content is the
-// deliverable and is readable as plain Markdown today.
+// src/content/docs/ and stays readable as plain Markdown on GitHub. Built and
+// published to Pages by .github/workflows/docs.yml.
 export default defineConfig({
   site: "https://underthinker.github.io/verbatim",
   base: "/verbatim",

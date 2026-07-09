@@ -12,6 +12,7 @@ target/
 # Node
 node_modules/
 dist/
+.astro/
 
 # Models and audio samples are never committed
 *.gguf

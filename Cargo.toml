@@ -20,6 +20,9 @@ tauri = { version = "2", default-features = true, features = ["macos-private-api
 tauri-build = { version = "2", default-features = true }
 # System clipboard writes for the tray's "recent dictations -> copy" action.
 tauri-plugin-clipboard-manager = "2"
+# Hands a URL to the OS default browser (About -> documentation). Used from Rust
+# only, so the webview never names the URL and no plugin ACL grant is needed.
+tauri-plugin-opener = "2"
 tokio = { version = "1", default-features = false, features = ["sync"] }
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"

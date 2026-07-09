@@ -36,6 +36,9 @@ use crate::{config, daemon, ipc, overlay, tray};
 /// How many history rows the window lists (UX.md 7 reverse-chron pairs).
 const HISTORY_LIMIT: u32 = 200;
 
+/// The published end-user docs (`docs/site`, deployed by `.github/workflows/docs.yml`).
+const DOCS_URL: &str = "https://underthinker.github.io/verbatim/";
+
 struct Shell {
     handle: RunnerHandle,
 }
@@ -213,6 +216,16 @@ fn history_list(state: tauri::State<'_, Arc<History>>) -> Result<Vec<HistoryEntr
 #[tauri::command]
 fn history_clear(state: tauri::State<'_, Arc<History>>) -> Result<(), String> {
     state.clear().map_err(|err| err.to_string())
+}
+
+/// Open the end-user docs in the OS default browser (About tab).
+///
+/// The URL is a Rust constant, not a webview argument: the command surface
+/// stays closed, so a compromised webview cannot turn this into an
+/// open-arbitrary-URL primitive (THREAT_MODEL.md, IPC verb-closure posture).
+#[tauri::command]
+fn open_docs() -> Result<(), String> {
+    tauri_plugin_opener::open_url(DOCS_URL, None::<&str>).map_err(|err| err.to_string())
 }
 
 /// Trigger dictation from the webview. The verb set is the same closed set
@@ -400,6 +413,7 @@ pub fn run() -> ExitCode {
             models_set_default,
             history_list,
             history_clear,
+            open_docs,
             onboarding_permission,
             onboarding_request_permission,
             onboarding_open_settings,
@@ -448,5 +462,22 @@ pub fn run() -> ExitCode {
             eprintln!("verbatim: shell failed: {err}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DOCS_URL;
+
+    /// The About tab's one-click open and the published site must not drift
+    /// apart: `open_docs` sends the user wherever `docs.yml` deploys Starlight.
+    #[test]
+    fn docs_url_matches_the_starlight_site_config() {
+        let config = include_str!("../../../docs/site/astro.config.mjs");
+        let site = DOCS_URL.trim_end_matches('/');
+        assert!(
+            config.contains(&format!("site: \"{site}\"")),
+            "DOCS_URL {DOCS_URL} is not the site astro.config.mjs publishes"
+        );
     }
 }
