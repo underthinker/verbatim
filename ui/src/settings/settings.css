@@ -95,9 +95,17 @@ body {
     outline-color: Highlight;
   }
 
-  /* Forced colors flattens the accent underline, leaving the selected tab
-     indistinguishable from its siblings. Restore the distinction. */
+  /* Forced colors repaints the inactive tabs' transparent underline as
+     CanvasText, so every tab grows a rule and selection would be carried by
+     hue alone (Highlight against CanvasText). Take the underline off the
+     inactive tabs instead: selection becomes presence-of-rule, a shape
+     difference. The active rule must follow the base one - equal specificity. */
+  .settings__tab {
+    border-bottom-style: none;
+  }
+
   .settings__tab--active {
+    border-bottom-style: solid;
     border-bottom-color: Highlight;
   }
 }

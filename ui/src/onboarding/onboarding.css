@@ -112,28 +112,6 @@ button:disabled {
   :focus-visible {
     outline-color: Highlight;
   }
-
-  /* Forced colors drops every background, so the progress bar and the step
-     dots lose the accent fill that is their only visual signal. Redraw both
-     from the system palette: shape and fill, never hue alone. */
-  .bar {
-    border: 1px solid CanvasText;
-  }
-
-  .bar-fill {
-    background: Highlight;
-    forced-color-adjust: none;
-  }
-
-  .dot {
-    border: 1px solid CanvasText;
-  }
-
-  .dot.active,
-  .dot.done {
-    background: CanvasText;
-    forced-color-adjust: none;
-  }
 }
 
 .primary {
@@ -239,4 +217,30 @@ button:disabled {
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+}
+
+/* Forced colors flattens every author background, so the progress bar fill and
+   the step dots lose the accent that is their only visual signal. Redraw both
+   from the system palette: shape and fill, never hue alone.
+   This block must stay last in the file - it overrides `.dot.active`,
+   `.dot.done`, and `.bar-fill` at equal specificity, so source order decides. */
+@media (forced-colors: active) {
+  .bar {
+    border: 1px solid CanvasText;
+  }
+
+  .bar-fill {
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+
+  .dot {
+    border: 1px solid CanvasText;
+  }
+
+  .dot.active,
+  .dot.done {
+    background: CanvasText;
+    forced-color-adjust: none;
+  }
 }

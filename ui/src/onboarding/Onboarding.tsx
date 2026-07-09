@@ -275,14 +275,13 @@ export default function Onboarding() {
   // re-labelled) Continue button, so a screen reader never announces the new
   // screen. Move focus to the step's heading instead (UX.md 8). The heading is
   // made focusable on the fly rather than every screen carrying a tabIndex it
-  // only needs for this. Skipped on first render: stealing focus before the
-  // user has acted is its own bug.
-  const firstRender = useRef(true);
+  // only needs for this. Focus only ever moves when the step actually changes:
+  // keying off "have I run before" would steal focus on mount, because
+  // StrictMode invokes the effect twice.
+  const focusedIndex = useRef(index);
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
+    if (focusedIndex.current === index) return;
+    focusedIndex.current = index;
     const heading = rootRef.current?.querySelector("h1");
     if (heading) {
       heading.tabIndex = -1;
