@@ -55,6 +55,7 @@ The core owns one `DictationSession` state machine, exactly mirroring UX.md sect
 - A frame-energy gate (`verbatim-core::level`) serves the two consumers that need a speech verdict: silence-only detection (UX "didn't catch anything") and the input-level events driving the overlay waveform.
   Silence is the peak 20 ms frame RMS falling under -40 dBFS, not the mean over the whole buffer - one word inside a long pause averages down to nothing, and discarding it would throw away what the user said.
   The capture worker publishes the RMS of each drained chunk; the runner polls that while Recording and republishes it at 20 Hz as `Event::InputLevel`. Pull, not push: core depends on platform, so a capture backend cannot reach the event bus.
+  The bus carries linear RMS - the honest physical quantity. The overlay converts it to decibels before drawing (`normalizeLevel` in `Overlay.tsx`, floor -60 dBFS, ceiling -10 dBFS), because speech near 0.03 RMS drawn linearly is a flat line.
 - Silero VAD (ONNX, via `sherpa-onnx`) was specified here and is deliberately **not** used (2026-07-09).
   Its third job - end-of-speech tail detection in Finalizing - has no consumer while the hotkey bounds the utterance, and the other two are answered by frame energy without an ONNX runtime or a shipped model.
   It earns its place when a surface must tell speech from steady non-speech noise (a fan, music), which energy alone cannot.
