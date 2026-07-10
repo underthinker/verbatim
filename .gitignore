@@ -28,6 +28,7 @@ spikes/**/out/
 
 # Tooling caches
 .impeccable/
+.playwright-mcp/
 
 # Tauri build-time codegen
 crates/verbatim-app/gen/
