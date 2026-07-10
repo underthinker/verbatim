@@ -20,6 +20,25 @@ import {
 /** Bars in the live waveform / static meter. */
 const WAVEFORM_BARS = 24;
 
+/**
+ * The bus carries an honest linear RMS, which is the wrong scale to draw with:
+ * ordinary speech sits near 0.03 and would lift a bar by 3% of its height,
+ * reading as a flat line. Hearing is logarithmic, so the pill draws decibels.
+ *
+ * Floor is under a quiet room's noise (measured -51 to -58 dBFS on an Apple M5
+ * internal mic); ceiling is where speech peaks before clipping.
+ */
+const LEVEL_FLOOR_DBFS = -60;
+const LEVEL_CEIL_DBFS = -10;
+
+/** Linear RMS in [0, 1] -> drawable level in [0, 1] on a decibel scale. */
+export function normalizeLevel(rms: number): number {
+  if (!(rms > 0)) return 0;
+  const dbfs = 20 * Math.log10(rms);
+  const span = LEVEL_CEIL_DBFS - LEVEL_FLOOR_DBFS;
+  return Math.min(1, Math.max(0, (dbfs - LEVEL_FLOOR_DBFS) / span));
+}
+
 const PHASE_LABEL: Record<OverlayPhase, string> = {
   arming: "starting",
   recording: "listening",
@@ -72,7 +91,7 @@ function Waveform({
       <div className="meter" role="presentation">
         <div
           className="meter-fill"
-          style={{ width: `${Math.min(1, current) * 100}%` }}
+          style={{ width: `${normalizeLevel(current) * 100}%` }}
         />
       </div>
     );
@@ -83,7 +102,7 @@ function Waveform({
         <div
           key={i}
           className="bar"
-          style={{ transform: `scaleY(${0.08 + Math.min(1, rms) * 0.92})` }}
+          style={{ transform: `scaleY(${0.08 + normalizeLevel(rms) * 0.92})` }}
         />
       ))}
     </div>

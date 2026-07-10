@@ -14,7 +14,7 @@
 //!   only holds a command channel plus shared atomics, which are `Send + Sync`.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -50,6 +50,11 @@ enum Command {
 pub struct CpalAudioCapture {
     commands: Sender<Command>,
     capturing: Arc<AtomicBool>,
+    /// Most recent drained-chunk RMS as `f32::to_bits`, written by the worker
+    /// and read by whoever polls `input_level`. An atomic rather than a channel:
+    /// the reader only ever wants the newest value, and a backed-up channel
+    /// would hand it stale levels.
+    level: Arc<AtomicU32>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -62,15 +67,18 @@ impl Default for CpalAudioCapture {
 impl CpalAudioCapture {
     pub fn new() -> Self {
         let capturing = Arc::new(AtomicBool::new(false));
+        let level = Arc::new(AtomicU32::new(0));
         let (commands, rx) = mpsc::channel();
         let worker_capturing = Arc::clone(&capturing);
+        let worker_level = Arc::clone(&level);
         let worker = thread::Builder::new()
             .name("verbatim-audio".to_owned())
-            .spawn(move || worker_loop(rx, worker_capturing))
+            .spawn(move || worker_loop(rx, worker_capturing, worker_level))
             .ok();
         Self {
             commands,
             capturing,
+            level,
             worker,
         }
     }
@@ -120,6 +128,10 @@ impl AudioCapture for CpalAudioCapture {
     fn is_capturing(&self) -> bool {
         self.capturing.load(Ordering::SeqCst)
     }
+
+    fn input_level(&self) -> f32 {
+        f32::from_bits(self.level.load(Ordering::Relaxed))
+    }
 }
 
 /// A live recording owned entirely by the worker thread.
@@ -132,24 +144,40 @@ struct Active {
     device_lost: Arc<AtomicBool>,
     /// Native-rate mono samples drained off the ring so far.
     accumulator: Vec<f32>,
+    /// Shared with the handle; see [`CpalAudioCapture::level`].
+    level: Arc<AtomicU32>,
 }
 
 impl Active {
-    /// Move everything the callback has produced into the accumulator. Runs on
-    /// the worker thread, never the audio callback, so growth is safe here.
+    /// Move everything the callback has produced into the accumulator, and
+    /// publish the RMS of what arrived. Runs on the worker thread, never the
+    /// audio callback, so growth (and the sqrt) are safe here.
     fn drain(&mut self) {
         let mut scratch = [0.0f32; 4096];
+        let mut sum_squares = 0.0f64;
+        let mut drained = 0usize;
         loop {
             let n = self.consumer.pop_slice(&mut scratch);
             if n == 0 {
                 break;
             }
+            sum_squares += scratch[..n].iter().map(|s| f64::from(*s * *s)).sum::<f64>();
+            drained += n;
             self.accumulator.extend_from_slice(&scratch[..n]);
+        }
+        // An empty drain means the callback simply had nothing new this tick;
+        // holding the last level is steadier than flashing the meter to zero.
+        if drained > 0 {
+            let rms = (sum_squares / drained as f64).sqrt() as f32;
+            self.level.store(rms.to_bits(), Ordering::Relaxed);
         }
     }
 
     /// Stop the stream, drain the tail, and resample to the pipeline rate. A
     /// device that dropped out mid-recording surfaces as `DeviceLost` (E6).
+    ///
+    /// The caller resets the shared level; a recording that ends must not leave
+    /// the overlay's last bar standing.
     fn finish(mut self) -> Result<AudioBuffer, CaptureError> {
         // Stopping first guarantees the callback has quiesced before the final
         // drain, so no samples are stranded in the ring.
@@ -175,8 +203,11 @@ impl Active {
     }
 }
 
-fn worker_loop(commands: Receiver<Command>, capturing: Arc<AtomicBool>) {
+fn worker_loop(commands: Receiver<Command>, capturing: Arc<AtomicBool>, level: Arc<AtomicU32>) {
     let mut active: Option<Active> = None;
+    // Every path that ends a recording clears the level, so a poller that races
+    // the stop sees silence rather than the last live frame.
+    let silence = || level.store(0.0f32.to_bits(), Ordering::Relaxed);
     loop {
         match active.take() {
             Some(mut recording) => {
@@ -184,10 +215,13 @@ fn worker_loop(commands: Receiver<Command>, capturing: Arc<AtomicBool>) {
                 match commands.recv_timeout(DRAIN_INTERVAL) {
                     Ok(Command::Stop(reply)) => {
                         capturing.store(false, Ordering::SeqCst);
-                        let _ = reply.send(recording.finish());
+                        let finished = recording.finish();
+                        silence();
+                        let _ = reply.send(finished);
                     }
                     Ok(Command::Abort) => {
                         capturing.store(false, Ordering::SeqCst);
+                        silence();
                         // `recording` dropped here: stream stops, buffer discarded.
                     }
                     Ok(Command::Start(reply)) => {
@@ -201,7 +235,7 @@ fn worker_loop(commands: Receiver<Command>, capturing: Arc<AtomicBool>) {
                 }
             }
             None => match commands.recv() {
-                Ok(Command::Start(reply)) => match start_recording() {
+                Ok(Command::Start(reply)) => match start_recording(Arc::clone(&level)) {
                     Ok(recording) => {
                         capturing.store(true, Ordering::SeqCst);
                         active = Some(recording);
@@ -221,7 +255,7 @@ fn worker_loop(commands: Receiver<Command>, capturing: Arc<AtomicBool>) {
     }
 }
 
-fn start_recording() -> Result<Active, CaptureError> {
+fn start_recording(level: Arc<AtomicU32>) -> Result<Active, CaptureError> {
     let host = cpal::default_host();
     let device = host.default_input_device().ok_or(CaptureError::NoDevice)?;
     let supported = device
@@ -258,6 +292,7 @@ fn start_recording() -> Result<Active, CaptureError> {
         native_rate,
         device_lost,
         accumulator: Vec::new(),
+        level,
     })
 }
 

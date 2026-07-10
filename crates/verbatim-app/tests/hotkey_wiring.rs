@@ -16,10 +16,7 @@ use verbatim_core::hotkey::{HotkeyMode, HotkeySemantics};
 use verbatim_core::runner::{RunnerConfig, RunnerDeps, RunnerHandle, SessionRunner};
 use verbatim_core::session::SessionState;
 use verbatim_engines::fake::{FakePolishBehavior, FakePolishEngine, FakeTranscriptionEngine};
-use verbatim_engines::{
-    AudioBuffer, EngineOptions, ModelHandle, PIPELINE_SAMPLE_RATE_HZ, PolishEngine,
-    TranscriptionEngine,
-};
+use verbatim_engines::{EngineOptions, ModelHandle, PolishEngine, TranscriptionEngine};
 use verbatim_platform::fake::{
     FakeAudioCapture, FakeFocusTracker, FakeHotkeyManager, FakeTextInjector,
 };
@@ -43,10 +40,7 @@ fn spawn_runner() -> RunnerHandle {
         .unwrap();
 
     let deps = RunnerDeps {
-        audio: Box::new(FakeAudioCapture::new(AudioBuffer {
-            samples: vec![0.0; PIPELINE_SAMPLE_RATE_HZ as usize],
-            sample_rate_hz: PIPELINE_SAMPLE_RATE_HZ,
-        })),
+        audio: Box::new(FakeAudioCapture::speaking()),
         transcription: Box::new(transcription),
         polish: Box::new(polish),
         injector: Box::new(FakeTextInjector::default()),

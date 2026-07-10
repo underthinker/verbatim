@@ -8,6 +8,7 @@
 #![allow(clippy::unwrap_used)]
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::broadcast;
 
@@ -25,13 +26,6 @@ use verbatim_platform::FocusedApp;
 use verbatim_platform::fake::{
     FakeAudioCapture, FakeFocusTracker, FakeInjectionOutcome, FakeTextInjector,
 };
-
-fn one_second_fixture() -> AudioBuffer {
-    AudioBuffer {
-        samples: vec![0.0; PIPELINE_SAMPLE_RATE_HZ as usize],
-        sample_rate_hz: PIPELINE_SAMPLE_RATE_HZ,
-    }
-}
 
 fn fake_model() -> ModelHandle {
     ModelHandle {
@@ -82,7 +76,7 @@ fn spawn_runner_focused(
     let events = Arc::new(EventBus::default());
     let receiver = events.subscribe();
     let deps = RunnerDeps {
-        audio: Box::new(FakeAudioCapture::new(one_second_fixture())),
+        audio: Box::new(FakeAudioCapture::speaking()),
         transcription: Box::new(loaded_asr("hello from verbatim")),
         polish: Box::new(polish),
         injector: Box::new(injector),
@@ -671,5 +665,90 @@ async fn empty_capture_returns_to_idle_without_an_error() {
             .iter()
             .any(|event| matches!(event, Event::ErrorRaised { .. })),
         "a silent recording is not an error"
+    );
+}
+
+/// A muted microphone yields a full buffer of silence, not an empty one. It
+/// must take the same soft path back to Idle: handing a second of zeros to the
+/// engine invites a transcript invented out of nothing.
+#[tokio::test]
+async fn a_silent_capture_returns_to_idle_without_reaching_the_engine() {
+    let injector = Arc::new(FakeTextInjector::default());
+    let events = Arc::new(EventBus::default());
+    let mut receiver = events.subscribe();
+    let deps = RunnerDeps {
+        audio: Box::new(FakeAudioCapture::silent()),
+        transcription: Box::new(loaded_asr("should never be reached")),
+        polish: Box::new(loaded_polish()),
+        injector: Box::new(injector.clone()),
+        focus: Box::new(FakeFocusTracker::default()),
+    };
+    let (runner, handle) = SessionRunner::new(deps, RunnerConfig::default(), events);
+    tokio::spawn(runner.run());
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    handle.trigger(Trigger::Stop).await.unwrap();
+    assert_eq!(handle.status().await.unwrap().state, SessionState::Idle);
+
+    assert!(
+        injector.injected_texts().is_empty(),
+        "silence carries no words, so nothing may be injected"
+    );
+    let drained = drain(&mut receiver);
+    assert_eq!(
+        transition_targets(&drained),
+        vec![
+            SessionState::Arming,
+            SessionState::Recording,
+            SessionState::Finalizing,
+            SessionState::Idle,
+        ],
+        "a silent capture must skip the pipeline entirely"
+    );
+    assert!(
+        !drained
+            .iter()
+            .any(|event| matches!(event, Event::ErrorRaised { .. })),
+        "a silent recording is not an error"
+    );
+}
+
+/// The overlay waveform is fed from the bus while Recording (ARCHITECTURE.md
+/// 4.1). Before this, `Event::InputLevel` had no producer outside a unit test
+/// and the pill's bars never moved.
+#[tokio::test]
+async fn recording_publishes_the_live_input_level() {
+    let events = Arc::new(EventBus::default());
+    let mut receiver = events.subscribe();
+    let deps = RunnerDeps {
+        audio: Box::new(FakeAudioCapture::speaking()),
+        transcription: Box::new(loaded_asr("hello")),
+        polish: Box::new(loaded_polish()),
+        injector: Box::new(FakeTextInjector::default()),
+        focus: Box::new(FakeFocusTracker::default()),
+    };
+    let (runner, handle) = SessionRunner::new(deps, RunnerConfig::default(), events);
+    tokio::spawn(runner.run());
+
+    handle.trigger(Trigger::Start).await.unwrap();
+    // Long enough for several 50 ms meter ticks to land.
+    tokio::time::sleep(Duration::from_millis(180)).await;
+    handle.trigger(Trigger::Stop).await.unwrap();
+
+    let levels: Vec<f32> = drain(&mut receiver)
+        .iter()
+        .filter_map(|event| match event {
+            Event::InputLevel { rms } => Some(*rms),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        levels.len() >= 2,
+        "expected repeated level events while recording, got {levels:?}"
+    );
+    assert!(
+        levels.iter().all(|rms| *rms > 0.0),
+        "a speaking fixture must report a level above silence, got {levels:?}"
     );
 }

@@ -14,10 +14,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWrite
 use verbatim_core::event::EventBus;
 use verbatim_core::runner::{RunnerDeps, RunnerHandle, SessionRunner};
 use verbatim_engines::fake::{FakePolishBehavior, FakePolishEngine, FakeTranscriptionEngine};
-use verbatim_engines::{
-    AudioBuffer, EngineOptions, ModelHandle, PIPELINE_SAMPLE_RATE_HZ, PolishEngine,
-    TranscriptionEngine,
-};
+use verbatim_engines::{EngineOptions, ModelHandle, PolishEngine, TranscriptionEngine};
 use verbatim_platform::fake::{FakeAudioCapture, FakeFocusTracker, FakeTextInjector};
 
 use crate::ipc::{Request, Response};
@@ -27,11 +24,6 @@ use crate::transport;
 /// Build the fake pipeline the Phase 1 daemon runs on. Every seam is a
 /// deterministic fake; real backends replace these one phase at a time.
 pub fn fake_deps() -> RunnerDeps {
-    let fixture = AudioBuffer {
-        samples: vec![0.0; PIPELINE_SAMPLE_RATE_HZ as usize],
-        sample_rate_hz: PIPELINE_SAMPLE_RATE_HZ,
-    };
-
     let mut transcription = FakeTranscriptionEngine::speaking("hello from verbatim");
     // Fakes never fail to load; ignore is honest here, not a swallowed error.
     let _ = transcription.load(&fake_model(), &EngineOptions::default());
@@ -40,7 +32,7 @@ pub fn fake_deps() -> RunnerDeps {
     let _ = polish.load(&fake_model(), &EngineOptions::default());
 
     RunnerDeps {
-        audio: Box::new(FakeAudioCapture::new(fixture)),
+        audio: Box::new(FakeAudioCapture::speaking()),
         transcription: Box::new(transcription),
         polish: Box::new(polish),
         injector: Box::new(FakeTextInjector::default()),

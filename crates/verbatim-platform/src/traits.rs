@@ -36,6 +36,15 @@ pub trait AudioCapture: Send + Sync {
     fn abort(&mut self);
 
     fn is_capturing(&self) -> bool;
+
+    /// RMS of the most recent audio the backend saw, in [0.0, 1.0]; 0.0 when
+    /// not capturing.
+    ///
+    /// Polled by the core while Recording and republished as
+    /// `Event::InputLevel` for the overlay waveform (ARCHITECTURE.md 4.1).
+    /// The core cannot subscribe to the capture callback directly - the
+    /// dependency runs core -> platform - so the level is pulled, not pushed.
+    fn input_level(&self) -> f32;
 }
 
 /// Text injection with an honest receipt (ARCHITECTURE.md 4.4).

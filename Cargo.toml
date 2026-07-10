@@ -23,7 +23,7 @@ tauri-plugin-clipboard-manager = "2"
 # Hands a URL to the OS default browser (About -> documentation). Used from Rust
 # only, so the webview never names the URL and no plugin ACL grant is needed.
 tauri-plugin-opener = "2"
-tokio = { version = "1", default-features = false, features = ["sync"] }
+tokio = { version = "1", default-features = false, features = ["sync", "time"] }
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }

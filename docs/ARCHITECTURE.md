@@ -52,9 +52,13 @@ The core owns one `DictationSession` state machine, exactly mirroring UX.md sect
 ### 4.1 Audio pipeline (core)
 
 - Capture via `cpal` (behind `AudioCapture` trait for testability), resampled to 16 kHz mono f32 ring buffer.
-- Silero VAD (ONNX, via `sherpa-onnx`'s VAD or `voice_activity_detector` crate) runs on the live stream for: end-of-speech tail detection in Finalizing, silence-only detection (UX "didn't catch anything"), and input-level events for the overlay waveform.
-  Not yet implemented as of 2026-07-09: the hotkey bounds the utterance, the tail flush is unconditional, and silence-only detection is an empty-buffer check in `runner.rs` (marked `ponytail:` there, to be swapped for the VAD verdict).
-  `Event::InputLevel` is defined and consumed by the overlay but has no producer yet, so the waveform renders no live level - closing this is part of landing the VAD.
+- A frame-energy gate (`verbatim-core::level`) serves the two consumers that need a speech verdict: silence-only detection (UX "didn't catch anything") and the input-level events driving the overlay waveform.
+  Silence is the peak 20 ms frame RMS falling under -40 dBFS, not the mean over the whole buffer - one word inside a long pause averages down to nothing, and discarding it would throw away what the user said.
+  The capture worker publishes the RMS of each drained chunk; the runner polls that while Recording and republishes it at 20 Hz as `Event::InputLevel`. Pull, not push: core depends on platform, so a capture backend cannot reach the event bus.
+  The bus carries linear RMS - the honest physical quantity. The overlay converts it to decibels before drawing (`normalizeLevel` in `Overlay.tsx`, floor -60 dBFS, ceiling -10 dBFS), because speech near 0.03 RMS drawn linearly is a flat line.
+- Silero VAD (ONNX, via `sherpa-onnx`) was specified here and is deliberately **not** used (2026-07-09).
+  Its third job - end-of-speech tail detection in Finalizing - has no consumer while the hotkey bounds the utterance, and the other two are answered by frame energy without an ONNX runtime or a shipped model.
+  It earns its place when a surface must tell speech from steady non-speech noise (a fan, music), which energy alone cannot.
 - Recording cap 5 min (UX); buffer is written to a temp WAV on cap or on engine failure (E3 "recording is saved").
 - Device handling: follow-default-device on disconnect where the OS allows, else emit `DeviceLost` (E6).
 
