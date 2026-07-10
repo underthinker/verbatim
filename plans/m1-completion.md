@@ -1,10 +1,19 @@
 # M1 Completion Plan - Remaining Phase Branches
 
-Status: draft.
-Goal: close the five open M1 acceptance criteria (ROADMAP.md:22-28).
-Each phase is a branch off `main`, PR-gated by CI, executable in a fresh chat context.
+Status: **all phases shipped; the milestone is code-complete.**
+Goal was to close the five M1 acceptance criteria (docs/ROADMAP.md, M1 section).
+Each phase was a branch off `main`, PR-gated by CI.
+The plan below is kept as the record of what was built and why; ROADMAP.md is the live status.
 
-Current state (verified 2026-07-03):
+Outcome (updated 2026-07-09):
+
+- Phases 6-10 all merged: Linux injection, Windows injection + IPC, CI packaging, latency bench, E2E smoke.
+- Three of the five criteria are ticked outright: unsigned dev artifacts on all four runners, honest failure detection with clipboard fallback, exhaustive state-machine tests plus green cross-platform E2E smoke.
+- Two criteria stay open on hardware and desktop access rather than on code:
+  - Real-keypress injection is verified and machine-checked on macOS (2026-07-09, Apple M5); Windows UIPI, GNOME Wayland portal + `restore_token`, and KDE Plasma 6 remain. Checklist and evidence: `docs/M1_INJECTION_VERIFICATION.md`.
+  - Raw p50 latency is 105.1 ms on Apple M5, far inside the 800 ms budget; the reference Windows laptop measurement is still unmade (desktop-class Windows figures are recorded in ROADMAP.md M0/M1).
+
+Current state at authoring time (verified 2026-07-03, now historical):
 
 - macOS vertical slice done: injection (`mac-inject`), hotkey/tray (`global-hotkey`), whisper.cpp, clipboard fallback with honest E4 receipts.
 - Linux backend is a 7-line doc stub (`crates/verbatim-platform/src/linux/mod.rs`).

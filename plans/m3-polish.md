@@ -3,6 +3,9 @@
 The milestone that earns the product its headline: raw dictation becomes clean,
 meaning-preserving text, fully local, without ever surprising the user.
 
+Status: **all phases (A-E) shipped and signed off 2026-07-08.**
+Three of the four criteria are closed; the `>= 80%` polish-preference half of criterion 1 is deferred to the M4 dogfood, which re-gates all of PRD section 7 against a real corpus.
+
 ## Acceptance criteria (the gate)
 
 From ROADMAP.md M3:
@@ -12,7 +15,9 @@ From ROADMAP.md M3:
 - [x] Polish adds <= 700 ms p50 for 10 s utterances on Apple Silicon; hardware-tier defaults applied elsewhere. p50 148 ms (Apple M5).
 - [x] Prompt changes are benchmark-gated in CI. Polish-quality bench gates guard + latency + deadline-miss rate on every push.
 
-## Current state (verified 2026-07-07)
+## Current state at authoring time (verified 2026-07-07, now historical)
+
+Every gap named below is closed: `LlamaPolishEngine` is real behind `llama-cpp` (Phase A), the caller-side similarity guard, personal dictionary, per-app profiles, raw-mode modifier, versioned prompt assets, benchmark, and deadline calibration all landed in Phases B-E.
 
 - `PolishEngine` trait (`crates/verbatim-engines/src/polish.rs`): `load`/`unload`/`is_loaded`/`polish(raw, profile, deadline)`. Only a fake impl.
 - `llama-cpp = []` in `verbatim-engines/Cargo.toml` is an empty stub feature - no real backend.

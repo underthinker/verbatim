@@ -1,17 +1,24 @@
 # M2 UX Shell - Scoping Plan
 
-Status: draft.
-Goal: close the four M2 acceptance criteria (docs/ROADMAP.md:34-39) - the real UI surfaces on top of the M1 headless walking skeleton.
-Each phase is a branch off `main`, PR-gated by CI, executable in a fresh chat context.
+Status: **all phases (A-F) shipped; the milestone is code-complete.**
+Goal was to close the four M2 acceptance criteria (docs/ROADMAP.md, M2 section) - the real UI surfaces on top of the M1 headless walking skeleton.
+Each phase was a branch off `main`, PR-gated by CI.
+The plan below is kept as the record of what was built and why; ROADMAP.md is the live status.
 
 ## Acceptance criteria (the gate)
 
 1. A non-technical tester completes install -> first dictation in < 5 min without help, on each platform. (onboarding, UX.md 6)
+   **Open**: onboarding ships (Phase D), but the timed run rides the M4 dogfood - only an external tester can produce this number.
 2. Every UX error state (E1-E10) is reachable in a test harness and shows its designed response; zero dead ends. (UX.md 4)
+   **Closed** (Phase C).
 3. Overlay never takes focus (verified on KDE, the spike-1 regression case) and respects reduced-motion. (UX.md 2, 7)
+   **Open**: macOS is machine-checked by `scripts/verify-overlay.sh` and reduced-motion is closed; KDE Plasma 6 and GNOME - the case the criterion exists to guard - still need a real desktop session. On Linux `focusable(false)` reaches only `gtk_window_set_accept_focus`, leaving `gtk_window_set_focus_on_map` at its default: first suspect if KWin steals focus on map.
 4. Accessibility pass: keyboard-only nav, screen-reader labels, no color-only signaling. (UX.md 8)
+   **Open**: the markup pass and all three `AccessibilityAnnouncer` backends ship (Phase F); nobody has driven the surfaces by hand under VoiceOver, Narrator, or Orca, and the announcement leg only confirms with a screen reader running.
 
-## Current state (verified 2026-07-05)
+## Current state at authoring time (verified 2026-07-05, now historical)
+
+Everything this section calls missing was built in Phases A-F: the Tauri 2 shell and event bridge (`verbatim-app/src/gui.rs`, `bridge.rs`), the `ui/` Vite + React frontend, the non-activating overlay window, the rendered E1-E10 catalog (`error_catalog.rs`), and the cross-platform tray.
 
 - **Core is UI-ready.** `verbatim-core` publishes a typed event bus (`event.rs`: `SessionTransition`, `InputLevel`, `DownloadProgress`, `PermissionChanged`, `ErrorRaised`) that every surface consumes without querying state (ARCHITECTURE.md 4.9). Session state machine (`session.rs`) is exhaustive incl. `Failed(ErrorId)` for E1-E10. Hotkey hold/toggle/tap-lock semantics (`hotkey.rs`) already implemented and time-injected for testing.
 - **No Tauri shell exists yet.** Despite ARCHITECTURE.md 1 naming Verbatim "a Tauri 2 application", `verbatim-app` today is a pure CLI daemon: `main.rs` (clap `daemon`/`trigger`/`status`), `daemon.rs` (`build_deps()` feature-swapped real/fake backends), `ipc.rs`/`transport.rs`/`client.rs` (closed-verb IPC, Unix socket + Windows named pipe). There is no webview, no React frontend, no overlay window, no Tauri command/event bridge.
@@ -130,8 +137,8 @@ Anti-patterns: no control without a label; no information by color alone; no foc
 
 Dependency order: A first (everything needs the shell). B and C parallel after A (both consume the bus; B de-risks KDE early). D after C (onboarding reuses E1/E2/E9 wiring). E after A (independent of B/C/D, can run parallel). F last (audits all surfaces once they exist).
 
-## Open questions to resolve at kickoff (UX.md 9)
+## Open questions (resolved during the milestone)
 
-- Near-cursor overlay placement: Wayland restricts global cursor position - ship display-edge first, defer near-cursor.
-- History default on/off for the privacy-first audience: proposal on with 7-day retention (decide before Phase E).
-- Frontend stack pinning (Vite/pnpm layout) and whether `src-tauri` is a new crate or folded into `verbatim-app` (decide in Phase A).
+- Near-cursor overlay placement: shipped display-edge; near-cursor deferred past v1 (Wayland restricts global cursor position).
+- History default: on, 7-day retention, "off" available.
+- Frontend stack: Vite + React + TS with pnpm in `ui/`; no separate `src-tauri` crate - the shell folded into `verbatim-app` (`gui.rs`, `bridge.rs`, `tauri.conf.json`).

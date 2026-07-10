@@ -1,17 +1,27 @@
 # M4 - Packaging, hardening, v1.0
 
-The milestone that turns a working product into a shippable one: signed installers on every channel, the second engine, a threat model, and a real dogfood that re-gates all of PRD section 7.
+The milestone that turns a working product into a shippable one: installers on every channel, the second engine, a threat model, and a real dogfood that re-gates all of PRD section 7.
+
+Status: **the active milestone.** Phases A-F have all landed; the dogfood (Phase E) and the remaining Phase 0 carry-overs are what stand between here and v1.0.
 
 ## Acceptance criteria (the gate)
 
 From ROADMAP.md M4:
 
 - [ ] All PRD section 7 success criteria pass, measured and recorded.
-- [ ] Signed installers on all channels; clean-machine installs verified.
+- [ ] Unsigned installers on all channels, with the one-time OS bypass documented; clean-machine install verified on each OS.
+      (2026-07-09: code signing deferred, not dropped - see the kickoff decision below. `release.yml` keeps both signing paths wired behind absent secrets, so this reverses by adding secrets, never by editing code.)
 - [ ] Crash-free rate > 99.5% over a 2-week dogfood with >= 5 external testers across the three OSes.
 - [x] Security review of the injection IPC surface (trigger verbs only) done. (2026-07-08, Phase D: `docs/THREAT_MODEL.md` + IPC hardening F1/F2 fixed with regression tests, F3/F4 dispositioned.)
 
-## Current state (verified 2026-07-08)
+## Current state (updated 2026-07-09)
+
+- Phases A-D and F have landed: the tag-triggered release pipeline, the four distribution channels, the Parakeet engine plus attribution surfaces, the threat model plus IPC hardening, and the end-user docs site.
+- Phase E infrastructure landed ahead of recruiting (local crash/session counters, `verbatim stats`, the tester report template); the two-week dogfood itself has not started, and it is the long pole for criteria 1 and 3.
+- Phase 0 carry-overs are partly closed. #18: macOS is done and machine-checked (2026-07-09); Windows UIPI, GNOME Wayland portal + `restore_token`, and KDE Plasma 6 remain. #16: the reference-Windows-laptop latency measurement is still unmade.
+- Still owed before v1.0: screenshots for the docs site (M2 shell captures), GitHub Pages enabled with source "GitHub Actions", and the M2 overlay focus check on KDE/GNOME.
+
+## Current state at authoring time (verified 2026-07-08, now historical)
 
 - M3 closed except the >= 80% polish-preference half of criterion 1, explicitly deferred to this milestone's dogfood.
 - Release pipeline is spec'd (ENGINEERING.md 6: tag `v*` -> matrix builds -> sign + notarize -> package -> draft release with checksums + SBOM -> channel PRs) but not implemented.
@@ -42,9 +52,12 @@ From ROADMAP.md M4:
 Close the M1 carry-overs the dogfood gate depends on.
 
 1. #18: run the real-keypress manual checklist (docs/M1_INJECTION_VERIFICATION.md) on Windows incl. UIPI, GNOME Wayland portal + `restore_token` silent reconnect, KDE Plasma 6.
+   (2026-07-09: the macOS leg is closed and machine-checked by `VERBATIM_TEXTEDIT_E2E=1 scripts/verify-injection.sh`, which reads the target document back instead of trusting the receipt - and which caught a paste/restore race that fed a cold target the user's previous clipboard under a `verified=true` receipt. Windows and Linux remain.)
 2. #16: measure raw p50 on the reference Windows laptop; record in ROADMAP.md.
 
 Verification: both issues closed with evidence recorded; M1 milestone closes.
+
+While a tester is at a KDE or GNOME desktop, take the M2 overlay focus check with them (`scripts/verify-overlay.sh` is macOS-only; KDE Plasma 6 is the spike-1 regression case).
 
 ## Phase A - branch `m4-phaseA-release-pipeline`
 
@@ -59,6 +72,8 @@ Release pipeline + signing + notarization (ENGINEERING.md 6/7).
 Verification: a `v0.9.x` pre-release tag produces signed, notarized, stapled artifacts end to end; `spctl --assess` and Windows SmartScreen metadata verified on the outputs.
 
 Anti-patterns: no cert material in the repo; no signing steps that silently skip.
+
+(2026-07-09: landed, and then the certificates were deliberately dropped for v1. Verbatim ships to a small known audience, where a Developer ID and an Authenticode OV cert buy only dialog suppression. Both signing paths stay wired behind absent secrets and degrade loud, so signing returns by adding secrets rather than by editing the workflow. Accepted cost: macOS keys TCC grants to the ad-hoc code-signing hash, so Microphone and Accessibility must be re-granted on every update - ENGINEERING.md section 7. The acceptance criterion above was reworded to match: unsigned installers with the one-time OS bypass documented.)
 
 ## Phase B - branch `m4-phaseB-channels`
 
@@ -133,7 +148,7 @@ Dependency order: Phase 0 and A first (0 unblocks E's cross-platform gate, A unb
 
 - Certs: neither purchased yet.
   Phase A lands the full pipeline against ad-hoc/unsigned artifacts with a loud unsigned warning; cert secrets get wired when issued.
-  Cert purchase (Apple Developer program + Authenticode OV) is Tristen's action item, tracked as a Phase A follow-up.
+  (Revised 2026-07-09: v1.0 ships unsigned. The cert purchase is no longer a v1 action item - the pipeline stays ready for the day it changes.)
 - Testers: recruit from friends/colleagues plus online communities (dictation/accessibility subreddits, HN, Discord); >= 5 total covering macOS, Windows 11, Ubuntu 24.04.
 - Blind panel: testers cross-score each other's anonymized raw/polished pairs; target minimum ~50 pairs total for the >= 80% claim.
 - Docs site: Astro Starlight, versioned with the repo (node toolchain already present via `ui/`).

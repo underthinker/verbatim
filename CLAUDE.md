@@ -2,7 +2,9 @@
 
 Cross-platform, privacy-first, fully local dictation app.
 Press a hotkey, speak, get polished text injected into any app, with zero cloud dependency.
-Status: M1 walking skeleton wrapping up (a few desktop/permission-bound injection checks remain); M2 UX shell in progress (overlay, E1-E10 error catalog, and first-run onboarding landed - see `plans/m2-ux-shell.md`).
+Status: M4 (packaging, hardening, v1.0) is the active milestone; phases A-F have all landed.
+M1-M3 are code-complete: what remains of them is hardware- and desktop-bound verification, not implementation.
+The open criteria across every milestone live in `docs/ROADMAP.md` and reduce to three things: real-keypress injection checks on Windows and Linux, a mid-range-laptop latency measurement, and the two-week external dogfood that re-gates PRD section 7.
 
 ## Model selection
 
@@ -34,8 +36,13 @@ Design docs in `docs/` are authoritative. Read them before making design decisio
 | `docs/UX.md` | State machine, error handling (E1-E10), onboarding, accessibility |
 | `docs/ENGINEERING.md` | Repo layout, tech choices, testing, CI/CD, packaging, security |
 | `docs/ROADMAP.md` | Milestones, acceptance criteria, current status |
+| `docs/THREAT_MODEL.md` | Assets, trust boundaries, injection-misuse analysis, IPC review |
+| `docs/M1_INJECTION_VERIFICATION.md` | Per-platform injection checklist: what CI proves, what a human must |
+| `docs/DOGFOOD_REPORT_TEMPLATE.md` | What an external tester submits (M4 crash-free + preference gates) |
 
-Milestone plans live in `plans/` (`m1-completion.md`, `m2-ux-shell.md`).
+End-user docs are an Astro Starlight site in `docs/site/`, deployed to GitHub Pages by `.github/workflows/docs.yml`.
+Milestone plans live in `plans/` (`m1-completion.md`, `m2-ux-shell.md`, `m3-polish.md`, `m4-packaging-hardening.md`), each carrying its own status header.
+Hardware-bound verification runs from `scripts/` (`verify-injection`, `verify-latency`, `verify-overlay`) - see `scripts/README.md`.
 
 ## Workspace
 
@@ -45,8 +52,8 @@ Cargo workspace, Rust stable, edition 2024, MSRV 1.88 (`rust-toolchain.toml`).
 |---|---|---|
 | `verbatim-core` | Core | session state machine, event bus, error taxonomy, `SessionRunner` actor |
 | `verbatim-platform` | Platform | hotkey/audio/injection/clipboard/permission/focus/autostart traits, deterministic fakes, per-OS backends |
-| `verbatim-engines` | Engine | transcription + polish traits, engine registry, fakes |
-| `verbatim-app` | App | `verbatim` binary (`daemon`/`trigger`/`status`/`gui` CLI), Tauri 2 shell (`gui.rs`), webview event bridge (`bridge.rs`), `tauri.conf.json` |
+| `verbatim-engines` | Engine | transcription (whisper.cpp, sherpa-onnx/Parakeet) + polish (llama.cpp) traits, engine registry, fakes |
+| `verbatim-app` | App | `verbatim` binary (`daemon`/`gui`/`trigger`/`status`/`stats`/`inject-selftest` CLI), Tauri 2 shell (`gui.rs`), webview event bridge (`bridge.rs`), `tauri.conf.json` |
 
 Frontend lives in `ui/` (Vite + React + TS, pnpm): the webview surfaces.
 It subscribes to the bridged event bus (`ui/src/events.ts` mirrors `bridge.rs`); no business logic in TS.
@@ -64,8 +71,9 @@ cargo deny check          # licenses + advisories
 Frontend (from `ui/`): `pnpm install`, `pnpm build` (typecheck + bundle), `pnpm lint`.
 Debug `verbatim gui` loads the Vite dev server (`pnpm dev`, port 1420); release bundles embed `ui/dist` via `ui/node_modules/.bin/tauri build` run from the repo root.
 
-Feature flags gate real backends behind traits: `cpal-audio` (mic capture), `real-injection`
-(+ `win-inject` on Windows). Default build uses deterministic fakes so tests stay OS-free.
+Feature flags gate every real backend behind its trait, so the default build is fake-only and tests stay OS-free.
+`verbatim-app` exposes the ones you build with: `real-audio` (cpal mic), `real-transcription` (whisper.cpp), `real-injection` (the `mac-inject`/`win-inject`/`linux-inject` seams for the target OS), and `global-hotkey`.
+Underneath, `verbatim-engines` carries `whisper-cpp`, `sherpa-onnx`, and `llama-cpp`, each with a `-vulkan` GPU variant on non-macOS targets (Metal is compiled in on macOS).
 
 ## Coding standards (from ENGINEERING.md section 3)
 
