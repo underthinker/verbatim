@@ -1,6 +1,6 @@
 # Verbatim - Engineering Specification
 
-Status: draft for sign-off.
+Status: signed off with the PRD (2026-07-02); maintained as the living spec - implementation follows this doc, not the reverse.
 Companion documents: [PRD.md](PRD.md), [ARCHITECTURE.md](ARCHITECTURE.md), [UX.md](UX.md), [ROADMAP.md](ROADMAP.md).
 
 ## 1. Repository layout
@@ -12,7 +12,7 @@ verbatim/
 │   ├── verbatim-core/
 │   ├── verbatim-platform/      # traits + macos/ windows/ linux/ impls + optional real cpal capture (cpal-audio)
 │   ├── verbatim-engines/       # whisper-cpp, sherpa-onnx, llama-cpp (feature-gated)
-│   └── verbatim-app/           # tauri shell + CLI entry
+│   └── verbatim-app/           # tauri shell + CLI entry; tests/ holds the cross-crate E2E
 ├── ui/                         # React + TypeScript + Vite (webview sources)
 │   ├── src/
 │   │   ├── surfaces/           # settings, onboarding, history, models, about
@@ -22,9 +22,11 @@ verbatim/
 │   ├── prompts/                # versioned polish prompt templates (see 5.3)
 │   └── models.json             # model registry: URLs, hashes, hw recommendations
 ├── docs/                       # these documents
+│   └── site/                   # Astro Starlight end-user docs, deployed to GitHub Pages
+├── plans/                      # per-milestone implementation plans
+├── scripts/                    # hardware-bound verification: injection, latency, overlay
 ├── spikes/                     # throwaway prototypes + findings (no quality bar)
 ├── benches/                    # latency + polish-quality benchmark harnesses
-├── tests/                      # cross-crate integration tests
 └── .github/workflows/
 ```
 
@@ -34,9 +36,9 @@ verbatim/
 |---|---|---|
 | Shell | Tauri 2 | overlay via non-activating always-on-top window; tray via tauri tray API |
 | Core language | Rust (stable, edition 2024) | MSRV pinned in workspace |
-| UI | React 18 + TypeScript strict + Vite + Tailwind | no runtime CSS-in-JS; design tokens shared with overlay |
+| UI | React 19 + TypeScript strict + Vite | plain CSS with shared design tokens; no Tailwind, no runtime CSS-in-JS |
 | Audio | cpal (optional, `cpal-audio`) | behind `AudioCapture` trait |
-| VAD | Silero via sherpa-onnx (single ONNX runtime dependency) | evaluate `voice_activity_detector` crate as lighter alternative in M1 |
+| VAD | Silero via sherpa-onnx (single ONNX runtime dependency) | **spec'd, not yet implemented.** The hotkey bounds the utterance today and silence-only detection is an empty-buffer check (`runner.rs`); the tail flush is unconditional |
 | ASR | whisper-rs (whisper.cpp), sherpa-onnx (Parakeet) | backend features: metal, cuda, vulkan, cpu |
 | Polish | llama-cpp-2 | resident context; model per hardware tier |
 | Linux input | reis (libei), evdev/uinput crates | no external binary dependencies (spike 1) |
@@ -57,7 +59,7 @@ verbatim/
 
 | Level | Scope | How |
 |---|---|---|
-| Unit | state machine transition table, VAD gating, similarity guard, dictionary post-pass, config migration | pure Rust, no OS deps; state machine gets exhaustive illegal-transition tests |
+| Unit | state machine transition table, similarity guard, dictionary post-pass, config migration (VAD gating once it lands) | pure Rust, no OS deps; state machine gets exhaustive illegal-transition tests |
 | Engine integration | each engine transcribes fixture WAVs within accuracy + latency envelopes | tiny models cached in CI; fixtures are real recorded speech, not synthesized (spike 3 caveat) |
 | Polish quality benchmark | fixed benchmark set of dictation transcripts -> polished output scored (exact-expectation + similarity-guard assertions) | runs in CI on prompt or model changes; prompts are versioned, a prompt change must ship with benchmark deltas |
 | Platform integration | injection receipt honesty, hotkey up/down semantics, permission probe states | per-OS CI runners where possible; Linux Wayland matrix (GNOME, KDE, Hyprland) on a self-hosted or nested-compositor (weston headless) runner |

@@ -1,6 +1,6 @@
 # Verbatim - UX Specification
 
-Status: draft for sign-off.
+Status: signed off with the PRD (2026-07-02); maintained as the living spec - implementation follows this doc, not the reverse.
 Companion documents: [PRD.md](PRD.md) for scope, [ARCHITECTURE.md](ARCHITECTURE.md) for the subsystems referenced here.
 
 ## 1. Experience principles

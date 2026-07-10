@@ -1,6 +1,7 @@
 # Verbatim - Implementation Roadmap
 
-Status: draft for sign-off.
+Status: live. M4 is the active milestone (updated 2026-07-09).
+M1-M3 are code-complete; their open boxes below are hardware- and desktop-bound verification, not implementation.
 Milestones are sequential; each has acceptance criteria that gate the next.
 "All platforms" always means macOS (ARM + Intel), Windows 11 x64, Ubuntu 24.04 (X11 + Wayland GNOME/KDE).
 
@@ -30,7 +31,7 @@ Acceptance criteria (open items tracked in the [M1 - Walking skeleton milestone]
 
 ## M2 - UX shell
 
-Scope: overlay (all states from UX 2), onboarding (UX 6), settings, model manager UI, history, permissions subsystem with live re-checks, error catalog E1-E9 wired end-to-end, hold/toggle/double-tap-lock semantics.
+Scope: overlay (all states from UX 2), onboarding (UX 6), settings, model manager UI, history, permissions subsystem with live re-checks, error catalog E1-E10 wired end-to-end, hold/toggle/double-tap-lock semantics.
 
 Acceptance criteria:
 
@@ -78,6 +79,13 @@ Acceptance criteria:
 - [ ] Crash-free rate > 99.5% over a 2-week dogfood with >= 5 external testers across the three OSes.
 - [x] Security review of the injection IPC surface (trigger verbs only) done.
   (2026-07-08, M4 Phase D: [docs/THREAT_MODEL.md](THREAT_MODEL.md) plus IPC hardening - F1/F2 fixed with regression tests, F3/F4 dispositioned, wire-protocol fuzz corpus committed.)
+
+## Known gaps not owned by a milestone criterion
+
+- **Silero VAD is spec'd but unimplemented** (ARCHITECTURE.md 4.1, ENGINEERING.md 2).
+  The hotkey bounds the utterance, the Finalizing tail flush is unconditional, and silence-only detection is an empty-buffer check in `runner.rs`.
+  `Event::InputLevel` is defined and the overlay consumes it, but nothing publishes it outside a unit test, so the recording waveform shows no live level.
+  Neither the UX.md 2 waveform nor the "didn't catch anything" flash is fully honest until this lands.
 
 ## Post-v1 (ordered backlog, not scheduled)
 

@@ -1,6 +1,6 @@
 # Verbatim - System Architecture
 
-Status: draft for sign-off.
+Status: signed off with the PRD (2026-07-02); maintained as the living spec - implementation follows this doc, not the reverse.
 Companion documents: [PRD.md](PRD.md), [UX.md](UX.md), [ENGINEERING.md](ENGINEERING.md); spike findings in [spikes/](../spikes/).
 
 ## 1. Overview
@@ -53,6 +53,8 @@ The core owns one `DictationSession` state machine, exactly mirroring UX.md sect
 
 - Capture via `cpal` (behind `AudioCapture` trait for testability), resampled to 16 kHz mono f32 ring buffer.
 - Silero VAD (ONNX, via `sherpa-onnx`'s VAD or `voice_activity_detector` crate) runs on the live stream for: end-of-speech tail detection in Finalizing, silence-only detection (UX "didn't catch anything"), and input-level events for the overlay waveform.
+  Not yet implemented as of 2026-07-09: the hotkey bounds the utterance, the tail flush is unconditional, and silence-only detection is an empty-buffer check in `runner.rs` (marked `ponytail:` there, to be swapped for the VAD verdict).
+  `Event::InputLevel` is defined and consumed by the overlay but has no producer yet, so the waveform renders no live level - closing this is part of landing the VAD.
 - Recording cap 5 min (UX); buffer is written to a temp WAV on cap or on engine failure (E3 "recording is saved").
 - Device handling: follow-default-device on disconnect where the OS allows, else emit `DeviceLost` (E6).
 
