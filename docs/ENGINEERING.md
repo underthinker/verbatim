@@ -64,7 +64,7 @@ verbatim/
 | Polish quality benchmark | fixed benchmark set of dictation transcripts -> polished output scored (exact-expectation + similarity-guard assertions) | runs in CI on prompt or model changes; prompts are versioned, a prompt change must ship with benchmark deltas |
 | Platform integration | injection receipt honesty, hotkey up/down semantics, permission probe states | per-OS CI runners where possible; Linux Wayland matrix (GNOME, KDE, Hyprland) on a self-hosted or nested-compositor (weston headless) runner |
 | E2E smoke | launch app, simulate hotkey, fixture audio through a fake `AudioCapture`, assert text injected into a test window | tauri-driver/WebDriver per platform; the fake-capture seam makes this deterministic |
-| Latency regression | benches/ harness replays spike 3/4 measurements | fails CI on >20% regression against per-runner baselines |
+| Latency regression | benches/ harness replays spike 3/4 measurements | fails CI on a >2.5x regression against per-runner baselines; the shared-runner pool is bimodal (a fixed commit spans 2.1-6.2 s p50 on `macos-latest`), so CI catches only gross regressions and the real budget is asserted on reference hardware by `scripts/verify-latency.sh` |
 
 ## 5. Assets and data
 

@@ -222,9 +222,9 @@ jobs:
             https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
       - name: Run latency bench
         shell: bash
-        # Shared virtualised runners occasionally run wholesale slow (noisy
-        # neighbours), which trips the 20% regression gate on a healthy build.
-        # Retry once: a real regression reproduces, a slow runner rarely does.
+        # Retry once to absorb a transient stall mid-run. It cannot absorb a
+        # slow runner draw (the retry lands on the same VM, which measures the
+        # same); the widened REGRESSION_LIMIT covers that. See latency.rs.
         run: |
           MODEL="$HOME/whisper-models/ggml-base.en.bin"
           if [ "$RUNNER_OS" = "Windows" ]; then MODEL="$(cygpath -w "$MODEL")"; fi
