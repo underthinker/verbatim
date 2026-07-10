@@ -73,14 +73,50 @@ impl HotkeyManager for FakeHotkeyManager {
 pub struct FakeAudioCapture {
     fixture: AudioBuffer,
     capturing: AtomicBool,
+    /// RMS of the whole fixture, reported while capturing so the fake pipeline
+    /// drives a live overlay waveform exactly as the real one does.
+    level: f32,
 }
 
 impl FakeAudioCapture {
     pub fn new(fixture: AudioBuffer) -> Self {
+        let level = if fixture.samples.is_empty() {
+            0.0
+        } else {
+            let sum_squares: f32 = fixture.samples.iter().map(|s| s * s).sum();
+            (sum_squares / fixture.samples.len() as f32).sqrt()
+        };
         Self {
             fixture,
             capturing: AtomicBool::new(false),
+            level,
         }
+    }
+
+    /// One second of speech-level tone (-17 dBFS): a fixture that carries real
+    /// energy, so the core's silence gate treats it as speech.
+    ///
+    /// A fixture of zeroed samples is silence by every honest measure, and the
+    /// pipeline is right to discard it. Fakes that want to reach transcription
+    /// must sound like something.
+    pub fn speaking() -> Self {
+        const RATE: u32 = 16_000;
+        let samples = (0..RATE)
+            .map(|i| 0.2 * (std::f32::consts::TAU * 200.0 * i as f32 / RATE as f32).sin())
+            .collect();
+        Self::new(AudioBuffer {
+            samples,
+            sample_rate_hz: RATE,
+        })
+    }
+
+    /// One second of digital silence: the muted-mic case (UX.md 2).
+    pub fn silent() -> Self {
+        const RATE: u32 = 16_000;
+        Self::new(AudioBuffer {
+            samples: vec![0.0; RATE as usize],
+            sample_rate_hz: RATE,
+        })
     }
 }
 
@@ -103,6 +139,14 @@ impl AudioCapture for FakeAudioCapture {
 
     fn is_capturing(&self) -> bool {
         self.capturing.load(Ordering::SeqCst)
+    }
+
+    fn input_level(&self) -> f32 {
+        if self.capturing.load(Ordering::SeqCst) {
+            self.level
+        } else {
+            0.0
+        }
     }
 }
 

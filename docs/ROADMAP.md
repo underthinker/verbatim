@@ -82,10 +82,9 @@ Acceptance criteria:
 
 ## Known gaps not owned by a milestone criterion
 
-- **Silero VAD is spec'd but unimplemented** (ARCHITECTURE.md 4.1, ENGINEERING.md 2).
-  The hotkey bounds the utterance, the Finalizing tail flush is unconditional, and silence-only detection is an empty-buffer check in `runner.rs`.
-  `Event::InputLevel` is defined and the overlay consumes it, but nothing publishes it outside a unit test, so the recording waveform shows no live level.
-  Neither the UX.md 2 waveform nor the "didn't catch anything" flash is fully honest until this lands.
+- (2026-07-09, closed) The overlay waveform had no live level and silence detection was an empty-buffer check.
+  `Event::InputLevel` now has a producer - the capture worker's per-chunk RMS, republished by the runner at 20 Hz - and a muted mic returns softly to Idle through a frame-energy gate rather than reaching the engine.
+  Silero VAD stays scoped out; the reasoning is recorded in ARCHITECTURE.md 4.1.
 
 ## Post-v1 (ordered backlog, not scheduled)
 

@@ -28,12 +28,18 @@ use verbatim_platform::{
 
 use crate::error::ErrorId;
 use crate::event::{Event, EventBus};
+use crate::level;
 use crate::session::{DictationSession, SessionId, SessionInput, SessionState};
 
 /// Mailbox depth. Triggers are rare (human-paced) and processed to completion
 /// one at a time, so a shallow bounded queue is plenty and keeps backpressure
 /// honest.
 const MAILBOX_CAPACITY: usize = 16;
+
+/// How often the overlay waveform is fed while recording. 20 Hz: one bar per
+/// frame at the rate the pill scrolls them, and slow enough that the broadcast
+/// bus never becomes the reason a recording drops samples.
+const INPUT_LEVEL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Reserved profile id: force raw injection for the matched app (UX.md 5.1).
 pub const RAW_PROFILE: &str = "raw";
@@ -257,20 +263,37 @@ impl SessionRunner {
 
     /// Own the actor task until every handle is dropped.
     pub async fn run(mut self) {
-        while let Some(command) = self.rx.recv().await {
-            match command {
-                RunnerCommand::Trigger(trigger) => self.handle_trigger(trigger),
-                RunnerCommand::SetPaused(paused) => self.paused = paused,
-                RunnerCommand::Reconfigure(config) => self.config = *config,
-                RunnerCommand::SetRawOverride(raw) => self.raw_override = raw,
-                RunnerCommand::Query(reply) => {
-                    let snapshot = RunnerStatus {
-                        session: self.session.id(),
-                        state: self.session.state(),
-                        paused: self.paused,
-                    };
-                    // A dropped receiver just means the asker gave up.
-                    let _ = reply.send(snapshot);
+        let mut meter = tokio::time::interval(INPUT_LEVEL_INTERVAL);
+        // A recording that stalls the loop must not fire a burst of catch-up
+        // ticks afterwards; the waveform wants the level now, not a backlog.
+        meter.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+        loop {
+            tokio::select! {
+                command = self.rx.recv() => {
+                    let Some(command) = command else { break };
+                    match command {
+                        RunnerCommand::Trigger(trigger) => self.handle_trigger(trigger),
+                        RunnerCommand::SetPaused(paused) => self.paused = paused,
+                        RunnerCommand::Reconfigure(config) => self.config = *config,
+                        RunnerCommand::SetRawOverride(raw) => self.raw_override = raw,
+                        RunnerCommand::Query(reply) => {
+                            let snapshot = RunnerStatus {
+                                session: self.session.id(),
+                                state: self.session.state(),
+                                paused: self.paused,
+                            };
+                            // A dropped receiver just means the asker gave up.
+                            let _ = reply.send(snapshot);
+                        }
+                    }
+                }
+                // Disabled unless recording, so an idle daemon parks on the
+                // mailbox instead of waking 20 times a second forever.
+                _ = meter.tick(), if self.session.state() == SessionState::Recording => {
+                    self.events.publish(Event::InputLevel {
+                        rms: self.audio.input_level(),
+                    });
                 }
             }
         }
@@ -355,12 +378,12 @@ impl SessionRunner {
                 return;
             }
         };
-        // Nothing captured (hotkey released before the stream opened, or a
-        // silent buffer): a soft return to Idle, never an error dialog
-        // (UX.md 2). Handing an empty buffer to the engine surfaces its
-        // inference error as E3, which offers a "Retry" over no audio.
-        // ponytail: sample-count only; swap for the VAD verdict when one lands.
-        if audio.samples.is_empty() {
+        // Nothing captured (hotkey released before the stream opened, a muted
+        // mic, or a buffer carrying no speech energy): a soft return to Idle,
+        // never an error dialog (UX.md 2). Handing such a buffer to the engine
+        // surfaces its inference error as E3, which offers a "Retry" over no
+        // audio, or invents a transcript out of noise.
+        if level::is_silence(&audio.samples, audio.sample_rate_hz) {
             self.step(SessionInput::SilenceOnly);
             return;
         }
