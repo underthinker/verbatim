@@ -198,7 +198,7 @@ export default function Overlay() {
 
   return (
     <div
-      className={`pill phase-${phase}${reducedMotion ? " reduced-motion" : ""}`}
+      className={`pill phase-${phase}`}
       role="status"
       aria-live="polite"
     >

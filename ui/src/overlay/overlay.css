@@ -174,12 +174,18 @@ body,
   }
 }
 
-/* Reduced motion: no entrance, no shimmer, no sweep, no fades (UX.md 8). */
-.reduced-motion,
-.reduced-motion .label,
-.reduced-motion .spinner,
-.reduced-motion.phase-success {
-  animation: none;
+/* Reduced motion: no entrance, no shimmer, no sweep, no fades (UX.md 8).
+   Stated once over the whole pill rather than per animated selector, so a rule
+   added later cannot escape it. The structural half of reduced motion - the
+   waveform giving way to a static level meter - is the webview's job, since it
+   swaps elements rather than stilling them (Overlay.tsx). */
+@media (prefers-reduced-motion: reduce) {
+  .pill,
+  .pill *,
+  .pill *::after {
+    animation: none;
+    transition: none;
+  }
 }
 
 @keyframes pill-in {
