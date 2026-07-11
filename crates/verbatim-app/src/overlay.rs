@@ -14,7 +14,7 @@
 //! anything" flash (UX.md 2).
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -202,8 +202,23 @@ pub fn create_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
             .focused(false)
             .visible(false)
             .build()?;
-    window.set_ignore_cursor_events(true)?;
+    // Click-through is set on first show, not here: on GTK/wlroots the window's
+    // GDK surface is not realized while hidden, and tao's `CursorIgnoreEvents`
+    // handler unwraps it, aborting the process at startup. See `mark_click_through`.
     Ok(window)
+}
+
+/// Make the overlay click-through, once, after it is first shown. Deferred from
+/// `create_window` because the underlying window must be realized: macOS and
+/// Windows tolerate the call on a hidden window, GTK/wlroots does not.
+fn mark_click_through(window: &WebviewWindow, done: &Arc<AtomicBool>) {
+    if done.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if let Err(err) = window.set_ignore_cursor_events(true) {
+        tracing::warn!(?err, "overlay click-through setup failed");
+        done.store(false, Ordering::SeqCst);
+    }
 }
 
 /// Bottom-center of the display the window is on (UX.md 7 default placement;
@@ -230,13 +245,15 @@ pub fn spawn_driver(app: AppHandle, events: &EventBus, announcer: Arc<dyn Access
     // Bumped on every directive; a pending flash-hide only fires if it is
     // still the latest presentation (a new session cancels the hide).
     let generation = Arc::new(AtomicU64::new(0));
+    // Set true once the overlay has been shown and made click-through.
+    let click_through = Arc::new(AtomicBool::new(false));
 
     tauri::async_runtime::spawn(async move {
         loop {
             match receiver.recv().await {
                 Ok(Event::SessionTransition { from, to, .. }) => {
                     if let Some(directive) = directive(from, to) {
-                        apply(&app, &generation, &announcer, directive);
+                        apply(&app, &generation, &click_through, &announcer, directive);
                     }
                 }
                 Ok(Event::InputLevel { rms }) => {
@@ -259,6 +276,7 @@ pub fn spawn_driver(app: AppHandle, events: &EventBus, announcer: Arc<dyn Access
 fn apply(
     app: &AppHandle,
     generation: &Arc<AtomicU64>,
+    click_through: &Arc<AtomicBool>,
     announcer: &Arc<dyn AccessibilityAnnouncer>,
     directive: Directive,
 ) {
@@ -295,6 +313,8 @@ fn apply(
         }
         if let Err(err) = position_bottom_center(&window).and_then(|()| window.show()) {
             tracing::warn!(?err, "overlay show failed");
+        } else {
+            mark_click_through(&window, click_through);
         }
     };
 
