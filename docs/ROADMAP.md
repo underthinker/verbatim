@@ -77,6 +77,8 @@ Acceptance criteria:
 - [ ] Unsigned installers on all channels, with the one-time OS bypass documented; clean-machine install verified on each OS.
   (2026-07-09: code signing deferred, not dropped. Verbatim ships to a small known audience, where an Apple Developer ID and a Windows Authenticode OV certificate buy only dialog suppression. `release.yml` keeps both signing paths wired behind absent secrets and degrades loud, so this reverses by adding secrets, never by editing code. Accepted cost: macOS keys TCC grants to the ad-hoc code-signing hash, so Microphone and Accessibility must be re-granted on every update - see [ENGINEERING.md](ENGINEERING.md) section 7.)
 - [ ] Crash-free rate > 99.5% over a 2-week dogfood with >= 5 external testers across the three OSes.
+- [ ] `verify-overlay.sh` grows a Linux focus-check path so the "overlay never takes focus" M2 criterion is machine-checked on Linux, not just macOS ([#80](https://github.com/underthinker/verbatim/issues/80)).
+  (2026-07-11: Hyprland verification run - `verify-injection.sh` Linux seam E2E 5/5 green; `verify-overlay.sh` has no Linux automation and asserts nothing. Hyprland overlay focus/click-through verified by hand via PR #78; KDE Plasma 6 stays open.)
 - [x] Security review of the injection IPC surface (trigger verbs only) done.
   (2026-07-08, M4 Phase D: [docs/THREAT_MODEL.md](THREAT_MODEL.md) plus IPC hardening - F1/F2 fixed with regression tests, F3/F4 dispositioned, wire-protocol fuzz corpus committed.)
 
