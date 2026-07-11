@@ -97,3 +97,19 @@ Underneath, `verbatim-engines` carries `whisper-cpp`, `sherpa-onnx`, and `llama-
 - Injection backends report honest receipts (real delivery ordered before fallback); seam tests assert ordering. See `docs/M1_INJECTION_VERIFICATION.md`.
 - `spikes/` holds throwaway prototypes - no quality bar, not production code.
 - Data locations differ per OS (config/models/history/logs) - see ENGINEERING.md section 5.2.
+
+## Claude memory sync
+
+Claude's per-project memory is checked into `.claude/memory/` so it travels with the repo.
+Claude reads/writes it from a path under `~/.claude/`, so each machine needs a one-time symlink pointing that path at the repo dir.
+On a fresh clone, run this once from the repo root (the symlink is never committed):
+
+```sh
+SLUG=$(pwd | tr '/' '-')
+LINK="$HOME/.claude/projects/$SLUG/memory"
+mkdir -p "$(dirname "$LINK")"
+rm -rf "$LINK"
+ln -s "$PWD/.claude/memory" "$LINK"
+```
+
+Details in `.claude/memory/README.md`.
