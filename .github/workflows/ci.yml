@@ -222,9 +222,9 @@ jobs:
             https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
       - name: Run latency bench
         shell: bash
-        # Shared virtualised runners occasionally run wholesale slow (noisy
-        # neighbours), which trips the 20% regression gate on a healthy build.
-        # Retry once: a real regression reproduces, a slow runner rarely does.
+        # Retry once to absorb a transient stall mid-run. It cannot absorb a
+        # slow runner draw (the retry lands on the same VM, which measures the
+        # same); the widened REGRESSION_LIMIT covers that. See latency.rs.
         run: |
           MODEL="$HOME/whisper-models/ggml-base.en.bin"
           if [ "$RUNNER_OS" = "Windows" ]; then MODEL="$(cygpath -w "$MODEL")"; fi
@@ -279,23 +279,28 @@ jobs:
             || echo "polish model download failed; bench will skip"
       - name: Run polish bench
         shell: bash
-        # Retry once for noisy-neighbour slowness, like the latency bench. Only
-        # set VERBATIM_POLISH_MODEL when the file is actually present so a failed
-        # download degrades to a clean skip instead of a hard failure.
+        # No retry, unlike the latency bench. A retry lands on the same VM, so it
+        # cannot cure a slow draw, and a polish here costs ~130 s: retrying the
+        # whole set doubles a multi-hour job to protect nothing. What CI grades
+        # is the similarity guard and the golden expectation, which are
+        # deterministic - a failure reproduces, so re-running only burns runner.
+        #
+        # Only set VERBATIM_POLISH_MODEL when the file is actually present so a
+        # failed download degrades to a clean skip instead of a hard failure.
         run: |
           MODEL="$HOME/polish-models/polish.gguf"
           if [ ! -s "$MODEL" ]; then
             echo "no polish model present; skipping polish bench"
             exit 0
           fi
-          for attempt in 1 2; do
-            if VERBATIM_POLISH_MODEL="$MODEL" \
-              cargo bench --locked -p verbatim-engines --features llama-cpp --bench polish_quality; then
-              exit 0
-            fi
-            echo "polish bench attempt ${attempt} failed"
-          done
-          exit 1
+          VERBATIM_POLISH_MODEL="$MODEL" \
+            cargo bench --locked -p verbatim-engines --features llama-cpp --bench polish_quality
         env:
           GGML_NO_I8MM: 1
+          # One pass, not the default 5. Virtualised macOS has no Metal and runs
+          # ~130 s per polish, so each extra pass costs ~20 min of runner for a
+          # p50 that nothing gates: no benches/baselines/polish-macos-latest.json
+          # exists, so check_baseline warns and passes. Arm that baseline (and
+          # raise this) only on hardware where the number means something.
+          VERBATIM_BENCH_ITERATIONS: 1
           VERBATIM_BENCH_BASELINE: ${{ matrix.os }}

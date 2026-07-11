@@ -153,7 +153,20 @@ fn run() -> Result<ExitCode, String> {
         deadline.as_millis()
     );
 
-    check_deadline_miss_rate(&engine, &profile, deadline, iterations)?;
+    // A saturated deadline is the ceiling, not a calibration: this machine is
+    // slower than ~47 ms/token, so every polish is *designed* to degrade to raw
+    // and the miss rate is 100% by arithmetic, whatever the code does. Grading
+    // it would test the runner, not the change. Reference hardware measures
+    // ~10 ms/token (640 ms deadline) and is graded normally.
+    if verbatim_engines::calibration::is_saturated(deadline) {
+        println!(
+            "polish bench: {ms_per_token:.1} ms/token saturates the {} ms deadline ceiling; \
+             skipping the deadline-miss criterion (needs <47 ms/token hardware)",
+            deadline.as_millis()
+        );
+    } else {
+        check_deadline_miss_rate(&engine, &profile, deadline, iterations)?;
+    }
 
     if let Ok(name) = std::env::var("VERBATIM_BENCH_BASELINE")
         && !name.is_empty()

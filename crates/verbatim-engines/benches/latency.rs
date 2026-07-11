@@ -13,8 +13,8 @@
 //!   `VERBATIM_BENCH_REQUIRE=1` to make that a failure (CI).
 //! - `VERBATIM_BENCH_ITERATIONS`: sample count (default 20).
 //! - `VERBATIM_BENCH_BASELINE`: per-runner baseline name; compares against
-//!   `benches/baselines/<name>.json` and fails on a >20% p50 regression
-//!   (ENGINEERING.md 6). A missing baseline file warns and passes so the
+//!   `benches/baselines/<name>.json` and fails on a p50 regression past
+//!   `REGRESSION_LIMIT` (ENGINEERING.md 6). A missing baseline file warns and passes so the
 //!   first run on a new runner can mint one from the printed JSON.
 //! - `VERBATIM_BENCH_MAX_P50_MS`: hard budget assert (800 on Apple Silicon).
 
@@ -28,7 +28,12 @@ use verbatim_engines::{
 };
 
 const DEFAULT_ITERATIONS: usize = 20;
-const REGRESSION_LIMIT: f64 = 1.20;
+/// Shared CI runners are bimodal: the same commit measures p50 2.1 s on a fast
+/// `macos-latest` draw and 6.2 s on a slow one. A 20% gate on that pool reports
+/// which VM the job landed on, not whether the code regressed. 2.5x clears the
+/// slowest observed draw and still trips on a gross regression; catching a true
+/// 20% regression needs the reference-hardware run (`scripts/verify-latency.sh`).
+const REGRESSION_LIMIT: f64 = 2.50;
 
 fn main() -> ExitCode {
     match run() {
@@ -136,8 +141,8 @@ fn percentile(sorted_ms: &[f64], pct: f64) -> f64 {
     sorted_ms[rank.clamp(1, sorted_ms.len()) - 1]
 }
 
-/// Compare against the committed per-runner baseline; >20% p50 regression
-/// fails the bench (ENGINEERING.md 6).
+/// Compare against the committed per-runner baseline; a p50 regression past
+/// `REGRESSION_LIMIT` fails the bench (ENGINEERING.md 6).
 fn check_baseline(name: &str, p50: f64) -> Result<(), String> {
     let path = fixture_path("..")
         .join("baselines")
@@ -157,10 +162,10 @@ fn check_baseline(name: &str, p50: f64) -> Result<(), String> {
     let limit = baseline_p50 * REGRESSION_LIMIT;
     if p50 > limit {
         return Err(format!(
-            "p50 {p50:.1} ms regressed >20% against baseline {baseline_p50:.1} ms (limit {limit:.1} ms)"
+            "p50 {p50:.1} ms regressed against baseline {baseline_p50:.1} ms (limit {limit:.1} ms)"
         ));
     }
-    println!("latency bench: within 20% of the {baseline_p50:.1} ms baseline");
+    println!("latency bench: within the {limit:.1} ms limit ({baseline_p50:.1} ms baseline)");
     Ok(())
 }
 

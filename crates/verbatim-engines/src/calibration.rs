@@ -31,7 +31,19 @@ const MIN_DEADLINE: Duration = Duration::from_millis(300);
 
 /// Never wait longer than this: past it the user is staring at nothing, so raw
 /// is the better answer even on a slow machine (UX.md 2).
-const MAX_DEADLINE: Duration = Duration::from_millis(3000);
+///
+/// A machine slower than `MAX_DEADLINE / TYPICAL_OUTPUT_TOKENS` (~47 ms/token)
+/// saturates this ceiling: its deadline stops tracking the measurement and
+/// becomes a budget it cannot meet, so it degrades every polish to raw. That is
+/// the intended product behaviour, but it means a saturated deadline is not a
+/// calibrated one - callers grading deadline-miss rate must check
+/// `is_saturated` before treating a miss as a defect.
+pub const MAX_DEADLINE: Duration = Duration::from_millis(3000);
+
+/// Did the measurement exceed what the ceiling can express? See `MAX_DEADLINE`.
+pub fn is_saturated(deadline: Duration) -> bool {
+    deadline >= MAX_DEADLINE
+}
 
 /// Turn a measured per-token generation cost into the polish deadline, clamped to
 /// the sane range. `ms_per_token` comes from timing a real polish generation and
@@ -60,6 +72,18 @@ mod tests {
     fn absurd_measurements_clamp() {
         assert_eq!(deadline_from_ms_per_token(0.01), MIN_DEADLINE);
         assert_eq!(deadline_from_ms_per_token(1000.0), MAX_DEADLINE);
+    }
+
+    #[test]
+    fn saturation_marks_the_deadline_as_uncalibrated() {
+        // Reference hardware (~10 ms/token) is calibrated and gradable.
+        assert!(!is_saturated(deadline_from_ms_per_token(10.0)));
+        // Virtualised CI measured 5372 ms/token: the ceiling swallows it, so a
+        // deadline-miss rate there is arithmetic, not a regression.
+        assert!(is_saturated(deadline_from_ms_per_token(5372.2)));
+        // The boundary is MAX_DEADLINE / TYPICAL_OUTPUT_TOKENS.
+        assert!(is_saturated(deadline_from_ms_per_token(46.875)));
+        assert!(!is_saturated(deadline_from_ms_per_token(46.0)));
     }
 
     #[test]
