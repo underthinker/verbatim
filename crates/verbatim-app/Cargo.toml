@@ -40,6 +40,13 @@ verbatim-core.workspace = true
 verbatim-engines.workspace = true
 verbatim-platform.workspace = true
 
+# The overlay is a wlroots/GNOME layer-shell surface on Linux so the compositor
+# never gives it keyboard focus (focusable(false) is an X11-only no-op on
+# Wayland). gtk-layer-shell wraps the same GtkWindow Tauri already builds.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
+
 [dev-dependencies]
 # `test-util` gives paused-time control so the IPC read-timeout test resolves
 # instantly instead of waiting out the real deadline.

@@ -205,7 +205,47 @@ pub fn create_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     // Click-through is set on first show, not here: on GTK/wlroots the window's
     // GDK surface is not realized while hidden, and tao's `CursorIgnoreEvents`
     // handler unwraps it, aborting the process at startup. See `mark_click_through`.
+    #[cfg(target_os = "linux")]
+    promote_to_layer_surface(&window);
     Ok(window)
+}
+
+/// Promote the overlay to a Wayland layer-shell surface with no keyboard
+/// interactivity. On Wayland the compositor - not the client - decides
+/// focus-on-map for xdg-toplevels, so `focusable(false)` (an X11 accept-focus
+/// hint) does not stop wlroots/GNOME giving the pill keyboard focus when it
+/// maps. A focused overlay is not cosmetic: the injected Ctrl-V would land in
+/// the pill instead of the target editor. A layer surface with
+/// `KeyboardMode::None` is the only protocol-level "never focus me" on Wayland.
+///
+/// Must run before the window is realized; `create_window` builds it hidden, so
+/// this is the last step before the first `show()`. Under X11/XWayland the
+/// window is not a Wayland surface and this is a no-op (logged), leaving the
+/// working `focusable(false)` path.
+#[cfg(target_os = "linux")]
+fn promote_to_layer_surface(window: &WebviewWindow) {
+    use gtk_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+
+    let gtk_window = match window.gtk_window() {
+        Ok(w) => w,
+        Err(err) => {
+            tracing::warn!(?err, "overlay layer-shell setup skipped: no gtk window");
+            return;
+        }
+    };
+    gtk_window.init_layer_shell();
+    gtk_window.set_layer(Layer::Overlay);
+    gtk_window.set_keyboard_mode(KeyboardMode::None);
+    gtk_window.set_namespace("verbatim-overlay");
+    // Bottom-center: anchor to the bottom edge (leaving left/right unanchored
+    // centers horizontally), same margin as `position_bottom_center`.
+    gtk_window.set_anchor(Edge::Bottom, true);
+    gtk_window.set_layer_shell_margin(Edge::Bottom, BOTTOM_MARGIN as i32);
+    if !gtk_window.is_layer_window() {
+        tracing::warn!(
+            "overlay is not a layer surface (compositor without layer-shell?); it may steal focus"
+        );
+    }
 }
 
 /// Make the overlay click-through, once, after it is first shown. Deferred from
@@ -221,8 +261,16 @@ fn mark_click_through(window: &WebviewWindow, done: &Arc<AtomicBool>) {
     }
 }
 
+/// On Linux the overlay is a layer-shell surface (see `promote_to_layer_surface`),
+/// anchored bottom-center by the compositor, so `set_position` does not apply.
+#[cfg(target_os = "linux")]
+fn position_bottom_center(_window: &WebviewWindow) -> tauri::Result<()> {
+    Ok(())
+}
+
 /// Bottom-center of the display the window is on (UX.md 7 default placement;
 /// configurable placement is later scope).
+#[cfg(not(target_os = "linux"))]
 fn position_bottom_center(window: &WebviewWindow) -> tauri::Result<()> {
     let Some(monitor) = window.current_monitor()? else {
         return Ok(());
