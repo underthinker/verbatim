@@ -61,9 +61,15 @@ custom-protocol = ["tauri/custom-protocol"]
 # Transcription/injection stay fake until their phases land, so this only
 # swaps the capture seam. Tests always run on fakes.
 real-audio = ["verbatim-platform/cpal-audio"]
-# Boot the daemon on real whisper.cpp transcription (model path from
-# VERBATIM_WHISPER_MODEL). Injection stays fake until its phase.
+# Boot the daemon on real whisper.cpp transcription. The model file resolves
+# from the configured `transcription_model` id (VERBATIM_WHISPER_MODEL
+# overrides); absent/unloadable degrades to the fake with a warning.
 real-transcription = ["verbatim-engines/whisper-cpp"]
+# Boot the daemon on real llama.cpp polish. The model file resolves from the
+# configured `polish_model` id (VERBATIM_POLISH_MODEL overrides); absent or
+# unloadable degrades to the fake echo polish, which injects the raw
+# transcript.
+real-polish = ["verbatim-engines/llama-cpp"]
 # Boot the daemon on the real injection + focus seams for the build's target
 # OS instead of the fakes. Clipboard/permission probes ship in the same crate
 # for the shell to call. Tests always run on fakes.

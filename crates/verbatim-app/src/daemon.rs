@@ -369,6 +369,14 @@ pub fn build_deps() -> RunnerDeps {
             deps.transcription = engine;
         }
     }
+    // Real llama.cpp polish, if a model is configured (M4: the differentiator
+    // ships in the product, not only the benches).
+    #[cfg(feature = "real-polish")]
+    {
+        if let Some(engine) = real_polish() {
+            deps.polish = engine;
+        }
+    }
     // Phase 4: real macOS text injection + focus tracking. The injector owns
     // its own clipboard discipline; both stay behind their probed capabilities.
     #[cfg(all(feature = "real-injection", target_os = "macos"))]
@@ -392,16 +400,45 @@ pub fn build_deps() -> RunnerDeps {
     deps
 }
 
-/// Build and load the whisper.cpp engine from `VERBATIM_WHISPER_MODEL`. A
-/// missing path or a load failure degrades to the fake transcription with a
-/// warning so the daemon still boots during development.
-#[cfg(feature = "real-transcription")]
-fn real_transcription() -> Option<Box<dyn TranscriptionEngine>> {
-    let Some(path) = std::env::var_os("VERBATIM_WHISPER_MODEL").map(std::path::PathBuf::from)
-    else {
-        tracing::warn!("VERBATIM_WHISPER_MODEL not set; keeping fake transcription");
+/// Resolve the model file a real engine should load: an explicit env-var
+/// override wins (used as a raw path, dev/bench workflows), otherwise the
+/// configured catalog id resolves through the model store on disk. `None`
+/// (with a warning) keeps the fake engine so the daemon still boots.
+#[cfg(any(feature = "real-transcription", feature = "real-polish"))]
+fn resolve_model_path(
+    env_var: &str,
+    configured: Option<&str>,
+    kind: &str,
+) -> Option<std::path::PathBuf> {
+    if let Some(path) = std::env::var_os(env_var).map(std::path::PathBuf::from) {
+        return Some(path);
+    }
+    let Some(id) = configured else {
+        tracing::warn!(kind, env_var, "no model configured; keeping fake engine");
         return None;
     };
+    let path = crate::models::installed_model_path(id);
+    if path.is_none() {
+        tracing::warn!(
+            kind,
+            model_id = id,
+            "configured model not on disk; keeping fake engine"
+        );
+    }
+    path
+}
+
+/// Build and load the whisper.cpp engine from the configured transcription
+/// model (`VERBATIM_WHISPER_MODEL` overrides). A missing model or a load
+/// failure degrades to the fake transcription with a warning so the daemon
+/// still boots.
+#[cfg(feature = "real-transcription")]
+fn real_transcription() -> Option<Box<dyn TranscriptionEngine>> {
+    let path = resolve_model_path(
+        "VERBATIM_WHISPER_MODEL",
+        Config::load().transcription_model.as_deref(),
+        "transcription",
+    )?;
     let mut engine = verbatim_engines::WhisperCppEngine::new();
     match engine.load(&ModelHandle { path }, &EngineOptions::default()) {
         Ok(()) => Some(Box::new(engine)),
@@ -410,6 +447,29 @@ fn real_transcription() -> Option<Box<dyn TranscriptionEngine>> {
                 ?err,
                 "whisper model load failed; keeping fake transcription"
             );
+            None
+        }
+    }
+}
+
+/// Build and load the llama.cpp polish engine from the configured polish model
+/// (`VERBATIM_POLISH_MODEL` overrides). The model loads whenever one is
+/// configured - the `polish` on/off switch is a live runner knob, so the engine
+/// must be ready if polish is enabled from settings without a restart. A
+/// missing model or a load failure degrades to the fake echo polish (raw
+/// transcript) with a warning.
+#[cfg(feature = "real-polish")]
+fn real_polish() -> Option<Box<dyn PolishEngine>> {
+    let path = resolve_model_path(
+        "VERBATIM_POLISH_MODEL",
+        Config::load().polish_model.as_deref(),
+        "polish",
+    )?;
+    let mut engine = verbatim_engines::LlamaPolishEngine::new();
+    match engine.load(&ModelHandle { path }, &EngineOptions::default()) {
+        Ok(()) => Some(Box::new(engine)),
+        Err(err) => {
+            tracing::error!(?err, "polish model load failed; keeping fake polish");
             None
         }
     }

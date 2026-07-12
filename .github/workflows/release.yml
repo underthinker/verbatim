@@ -67,16 +67,16 @@ jobs:
         include:
           - os: macos-latest
             artifact: macos-arm64
-            features: real-audio,real-transcription,real-injection,global-hotkey
+            features: real-audio,real-transcription,real-polish,real-injection,global-hotkey
           - os: macos-15-intel
             artifact: macos-x64
-            features: real-audio,real-transcription,real-injection,global-hotkey
+            features: real-audio,real-transcription,real-polish,real-injection,global-hotkey
           - os: windows-latest
             artifact: windows-x64
-            features: real-audio,real-transcription,real-injection
+            features: real-audio,real-transcription,real-polish,real-injection
           - os: ubuntu-24.04
             artifact: linux-x64
-            features: real-audio,real-transcription,real-injection
+            features: real-audio,real-transcription,real-polish,real-injection
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
