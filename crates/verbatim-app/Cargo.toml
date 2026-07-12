@@ -38,6 +38,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 verbatim-core.workspace = true
 verbatim-engines.workspace = true
+verbatim-model-downloader.workspace = true
 verbatim-platform.workspace = true
 
 # The overlay is a wlroots/GNOME layer-shell surface on Linux so the compositor

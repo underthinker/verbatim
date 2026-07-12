@@ -43,6 +43,10 @@ exceptions = [
     { allow = ["MPL-2.0"], crate = "cssparser-macros" },
     { allow = ["MPL-2.0"], crate = "dtoa-short" },
     { allow = ["MPL-2.0"], crate = "selectors" },
+    # Mozilla's curated TLS trust anchors, used by rustls in the sole
+    # network-capable model downloader. CDLA-Permissive-2.0 permits use,
+    # modification, and redistribution of the data.
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
 ]
 
 # tray-icon is the Tao/Tauri authors' crate; on Linux it draws in gtk-rs 0.18
@@ -85,11 +89,11 @@ multiple-versions = "warn"
 # ENGINEERING.md 8: no outbound-capable dependencies outside the model
 # downloader. When the downloader crate lands, it gets a `wrappers` exception.
 deny = [
-    { crate = "reqwest" },
+    { crate = "reqwest", wrappers = ["verbatim-model-downloader"] },
     { crate = "ureq" },
     { crate = "curl" },
     { crate = "isahc" },
-    { crate = "hyper" },
+    { crate = "hyper", wrappers = ["reqwest", "hyper-rustls", "hyper-util"] },
 ]
 
 [sources]

@@ -28,9 +28,9 @@ pub struct ModelSpec {
     pub name: &'static str,
     pub kind: ModelKind,
     pub size_bytes: u64,
+    /// HTTPS source for the immutable model artifact.
+    pub url: &'static str,
     /// Lowercase-hex sha256 the real downloader verifies before a model is used.
-    // TODO(phase-e): pin the real release digests before enabling the network
-    // downloader; empty means "not yet pinned" and the fake never reads it.
     pub sha256: &'static str,
     /// Installed RAM (GiB) at or above which this model is a smooth realtime
     /// choice - the input to the onboarding hardware recommendation.
@@ -51,8 +51,9 @@ pub const CATALOG: &[ModelSpec] = &[
         id: "whisper-base.en",
         name: "Base (English)",
         kind: ModelKind::Transcription,
-        size_bytes: 148_000_000,
-        sha256: "",
+        size_bytes: 147_964_211,
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en.bin",
+        sha256: "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
         min_ram_gib: 4,
         license: "MIT",
         attribution: "OpenAI Whisper, via whisper.cpp (ggml)",
@@ -61,8 +62,9 @@ pub const CATALOG: &[ModelSpec] = &[
         id: "whisper-small.en",
         name: "Small (English)",
         kind: ModelKind::Transcription,
-        size_bytes: 488_000_000,
-        sha256: "",
+        size_bytes: 487_614_201,
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.en.bin",
+        sha256: "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
         min_ram_gib: 8,
         license: "MIT",
         attribution: "OpenAI Whisper, via whisper.cpp (ggml)",
@@ -71,8 +73,9 @@ pub const CATALOG: &[ModelSpec] = &[
         id: "whisper-medium.en",
         name: "Medium (English)",
         kind: ModelKind::Transcription,
-        size_bytes: 1_530_000_000,
-        sha256: "",
+        size_bytes: 1_533_774_781,
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-medium.en.bin",
+        sha256: "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
         min_ram_gib: 16,
         license: "MIT",
         attribution: "OpenAI Whisper, via whisper.cpp (ggml)",
@@ -84,6 +87,7 @@ pub const CATALOG: &[ModelSpec] = &[
         name: "Parakeet (English)",
         kind: ModelKind::Transcription,
         size_bytes: 660_000_000,
+        url: "",
         sha256: "",
         min_ram_gib: 4,
         license: "CC-BY-4.0",
@@ -94,6 +98,7 @@ pub const CATALOG: &[ModelSpec] = &[
         name: "Polish (Qwen2.5 0.5B)",
         kind: ModelKind::Polish,
         size_bytes: 352_000_000,
+        url: "",
         sha256: "",
         min_ram_gib: 8,
         license: "Apache-2.0",

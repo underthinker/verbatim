@@ -19,14 +19,17 @@ use tauri::{Emitter, Manager};
 
 use verbatim_core::event::{Event, EventBus};
 use verbatim_core::runner::{RunnerHandle, SessionRunner};
-use verbatim_engines::fake::FakeModelDownloader;
 use verbatim_platform::AccessibilityAnnouncer;
 #[cfg(not(all(
     feature = "real-injection",
     any(target_os = "macos", target_os = "linux")
 )))]
 use verbatim_platform::fake::FakeAnnouncer;
+#[cfg(not(feature = "real-injection"))]
 use verbatim_platform::fake::{FakePermissionProbe, FakePermissionRequester};
+#[cfg(feature = "real-injection")]
+use verbatim_platform::{Capability, PermissionRequestError};
+use verbatim_platform::{PermissionProbe, PermissionRequest};
 
 use crate::bridge::{self, SessionStateDto, UiEvent};
 use crate::config::OnboardingState;
@@ -41,6 +44,70 @@ const HISTORY_LIMIT: u32 = 200;
 
 /// The published end-user docs (`docs/site`, deployed by `.github/workflows/docs.yml`).
 const DOCS_URL: &str = "https://underthinker.github.io/verbatim/";
+
+/// User-initiated permission grants are completed in the OS settings UI. The
+/// read-only platform probe supplies the live state while onboarding polls.
+#[cfg(feature = "real-injection")]
+struct SystemPermissionRequester;
+
+#[cfg(feature = "real-injection")]
+impl PermissionRequest for SystemPermissionRequester {
+    fn request(&self, capability: Capability) -> Result<(), PermissionRequestError> {
+        self.open_settings(capability)
+    }
+
+    fn open_settings(&self, capability: Capability) -> Result<(), PermissionRequestError> {
+        let url = permission_settings_url(capability)
+            .ok_or(PermissionRequestError::Unsupported(capability))?;
+        tauri_plugin_opener::open_url(url, None::<&str>)
+            .map_err(|error| PermissionRequestError::Backend(error.to_string()))
+    }
+}
+
+#[cfg(all(feature = "real-injection", target_os = "macos"))]
+fn permission_settings_url(capability: Capability) -> Option<&'static str> {
+    match capability {
+        Capability::Microphone => {
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+        }
+        Capability::TextInjection | Capability::InputMonitoring => {
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        }
+    }
+}
+
+#[cfg(all(feature = "real-injection", target_os = "windows"))]
+fn permission_settings_url(capability: Capability) -> Option<&'static str> {
+    match capability {
+        Capability::Microphone => Some("ms-settings:privacy-microphone"),
+        Capability::TextInjection | Capability::InputMonitoring => None,
+    }
+}
+
+#[cfg(all(feature = "real-injection", target_os = "linux"))]
+fn permission_settings_url(capability: Capability) -> Option<&'static str> {
+    match capability {
+        Capability::Microphone | Capability::TextInjection => {
+            Some("https://underthinker.github.io/verbatim/permissions/#linux")
+        }
+        Capability::InputMonitoring => None,
+    }
+}
+
+#[cfg(all(feature = "real-injection", target_os = "macos"))]
+fn build_permission_probe() -> Arc<dyn PermissionProbe> {
+    Arc::new(verbatim_platform::macos::MacPermissionProbe::new())
+}
+
+#[cfg(all(feature = "real-injection", target_os = "windows"))]
+fn build_permission_probe() -> Arc<dyn PermissionProbe> {
+    Arc::new(verbatim_platform::windows::WinPermissionProbe::new())
+}
+
+#[cfg(all(feature = "real-injection", target_os = "linux"))]
+fn build_permission_probe() -> Arc<dyn PermissionProbe> {
+    Arc::new(verbatim_platform::linux::LinuxPermissionProbe::new())
+}
 
 struct Shell {
     handle: RunnerHandle,
@@ -410,15 +477,41 @@ pub fn run() -> ExitCode {
         });
     }
 
-    // Onboarding service (Phase D). Permission and download backends are the
-    // deterministic fakes for now; the real per-OS impls and the hash-verified
-    // network downloader land later (behind feature flags / Phase E).
+    // Onboarding and the model manager share the production downloader so a
+    // partial transfer can resume from either surface.
+    let downloader =
+        match verbatim_model_downloader::HttpModelDownloader::new(crate::models::models_dir()) {
+            Ok(downloader) => {
+                Arc::new(downloader) as Arc<dyn verbatim_engines::model::ModelDownloader>
+            }
+            Err(err) => {
+                eprintln!("verbatim: model downloader initialization failed: {err}");
+                return ExitCode::FAILURE;
+            }
+        };
+    #[cfg(feature = "real-injection")]
+    let (permission_probe, permission_requester): (
+        Arc<dyn PermissionProbe>,
+        Arc<dyn PermissionRequest>,
+    ) = (
+        build_permission_probe(),
+        Arc::new(SystemPermissionRequester),
+    );
+    #[cfg(not(feature = "real-injection"))]
+    let (permission_probe, permission_requester): (
+        Arc<dyn PermissionProbe>,
+        Arc<dyn PermissionRequest>,
+    ) = {
+        let probe = Arc::new(FakePermissionProbe::default());
+        (
+            Arc::clone(&probe) as Arc<dyn PermissionProbe>,
+            Arc::new(FakePermissionRequester::new(probe)),
+        )
+    };
     let onboarding = Onboarding::new(
-        Arc::new(FakePermissionProbe::default()),
-        Arc::new(FakePermissionRequester::new(Arc::new(
-            FakePermissionProbe::default(),
-        ))),
-        Arc::new(FakeModelDownloader::default()),
+        permission_probe,
+        permission_requester,
+        Arc::clone(&downloader),
         onboarding::detect_hardware(),
         Arc::clone(&events),
     );
@@ -470,10 +563,7 @@ pub fn run() -> ExitCode {
         .manage(OnboardingShell {
             service: onboarding,
         })
-        .manage(ModelManager::new(
-            Arc::new(FakeModelDownloader::default()),
-            Arc::clone(&events),
-        ))
+        .manage(ModelManager::new(downloader, Arc::clone(&events)))
         .manage(Arc::clone(&history))
         .invoke_handler(tauri::generate_handler![
             trigger,
