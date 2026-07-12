@@ -527,18 +527,39 @@ pub fn run() -> ExitCode {
     let tray_handle = handle.clone();
     let tray_history = Arc::clone(&history);
 
-    // Global hotkey: the shell binds the same chord the headless daemon does,
-    // so the installed app dictates without a separate daemon process. On
-    // macOS registration must happen on this (main) thread before the webview
-    // loop starts; the backend's run-loop source is then serviced by the
-    // webview event loop itself, and the chord path's channel is drained from
-    // the run callback below.
+    // Global hotkey: the GUI uses Tauri's event-loop-native plugin for normal
+    // chords. The lower-level global-hotkey receiver does not wake Tauri when
+    // every Verbatim window is hidden or unfocused, so draining it from
+    // `MainEventsCleared` made the shortcut appear app-local. Bare right-side
+    // modifier bindings still use the CGEventTap backend because Carbon-style
+    // shortcut registrars cannot represent a modifier without a key.
     #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
-    let hotkey = {
+    let (modifier_hotkey, shortcut_plugin, gui_shortcut) = {
+        use tauri_plugin_global_shortcut::{Builder, ShortcutState};
+        use verbatim_platform::modifier_tap::ModifierKey;
+
         let (chord, mode) = daemon::hotkey_selection();
         let (edge_tx, semantics) = daemon::hotkey_semantics_channel(handle.clone(), mode);
         tauri::async_runtime::spawn(semantics);
-        daemon::register_macos_hotkey(&chord, mode, edge_tx)
+
+        let plugin_edge_tx = edge_tx.clone();
+        let plugin = Builder::new().with_handler(move |_app, _shortcut, event| {
+            let edge = match event.state {
+                ShortcutState::Pressed => verbatim_platform::HotkeyEvent::Pressed,
+                ShortcutState::Released => verbatim_platform::HotkeyEvent::Released,
+            };
+            let _ = plugin_edge_tx.send(edge);
+        });
+
+        if ModifierKey::parse(&chord).is_some() {
+            (
+                Some(daemon::register_macos_hotkey(&chord, mode, edge_tx)),
+                plugin.build(),
+                None,
+            )
+        } else {
+            (None, plugin.build(), Some((chord, mode)))
+        }
     };
     // The Linux/Windows backends own their delivery threads, so they only have
     // to outlive the shell: hold them until the webview loop returns.
@@ -557,7 +578,11 @@ pub fn run() -> ExitCode {
         daemon::register_windows_hotkey(&chord, mode, edge_tx)
     };
 
-    let result = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+    let builder = builder.plugin(shortcut_plugin);
+
+    let result = builder
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Shell { handle })
         .manage(OnboardingShell {
@@ -588,6 +613,15 @@ pub fn run() -> ExitCode {
             onboarding_complete,
         ])
         .setup(move |app| {
+            #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+            if let Some((chord, mode)) = &gui_shortcut {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+                match app.global_shortcut().register(chord.as_str()) {
+                    Ok(()) => tracing::info!(%chord, ?mode, "event-loop-native global hotkey registered"),
+                    Err(err) => tracing::error!(%chord, ?err, "hotkey registration failed; CLI triggers still work"),
+                }
+            }
             spawn_event_bridge(app.handle().clone(), &events);
             // Overlay (Phase B): created hidden so ARMING can show it within
             // the < 50 ms budget; driven straight from the Rust bus.
@@ -621,15 +655,39 @@ pub fn run() -> ExitCode {
         }
     };
 
-    app.run(move |_app, _event| {
-        // The chord backend's edges land on a process-global channel that must
-        // be drained on the main thread each time the event loop turns (the
-        // modifier-tap backend delivers straight from its run-loop source and
-        // drains as a no-op).
-        #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
-        if matches!(_event, tauri::RunEvent::MainEventsCleared) {
-            hotkey.drain();
+    app.run(move |app, event| {
+        // Closing Settings hides its durable window instead of destroying it.
+        // The runner, tray, hotkey, and webview state remain alive, and the tray
+        // or Dock can reveal exactly the same window again.
+        if let tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } = &event
+            && label == "main"
+        {
+            api.prevent_close();
+            if let Some(main) = app.get_webview_window("main")
+                && let Err(err) = main.hide()
+            {
+                tracing::warn!(?err, "settings window hide failed");
+            }
         }
+
+        // Standard macOS app lifecycle: clicking the Dock icon after closing
+        // Settings brings the window back, just like choosing Settings… in the
+        // tray menu.
+        #[cfg(target_os = "macos")]
+        if matches!(event, tauri::RunEvent::Reopen { .. })
+            && let Some(main) = app.get_webview_window("main")
+            && let Err(err) = main.show().and_then(|()| main.set_focus())
+        {
+            tracing::warn!(?err, "settings window reopen failed");
+        }
+
+        // Keep the bare-modifier event tap alive for the full app lifetime.
+        #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+        let _ = &modifier_hotkey;
     });
 
     // The webview loop returned, so this is an orderly shutdown: clear the

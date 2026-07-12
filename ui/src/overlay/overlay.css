@@ -73,7 +73,7 @@ body,
    grows to fit the sentence and its action affordance rather than truncating. */
 .phase-error {
   width: auto;
-  max-width: 440px;
+  max-width: 460px;
   height: auto;
   min-height: 56px;
   padding-top: 12px;
