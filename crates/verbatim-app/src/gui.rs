@@ -538,7 +538,6 @@ pub fn run() -> ExitCode {
         // drains as a no-op).
         #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
         if matches!(_event, tauri::RunEvent::MainEventsCleared) {
-            use verbatim_platform::hotkey::MainThreadHotkey;
             hotkey.drain();
         }
     });

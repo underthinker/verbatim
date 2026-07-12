@@ -110,8 +110,6 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
-    use verbatim_platform::hotkey::MainThreadHotkey;
-
     let (chord, mode) = hotkey_selection();
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
