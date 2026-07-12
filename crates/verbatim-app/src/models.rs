@@ -69,6 +69,7 @@ impl From<ModelKind> for ModelKindDto {
 
 /// The model manager service. Holds explicit dirs so tests inject temp
 /// locations without touching process-global env vars.
+#[derive(Clone)]
 pub struct ModelManager {
     downloader: Arc<dyn ModelDownloader>,
     events: Arc<EventBus>,

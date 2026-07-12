@@ -52,16 +52,22 @@ export default function ModelsTab() {
 
   const download = (id: string) => {
     setError(null);
+    const clearProgress = () => {
+      setProgress((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    };
     downloadModel(id)
       .then(() => {
-        setProgress((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
+        clearProgress();
         refresh();
       })
-      .catch((reason: string) => setError(`Download failed: ${reason}`));
+      .catch((reason: string) => {
+        clearProgress();
+        setError(`Download failed: ${reason}`);
+      });
   };
 
   const remove = (id: string) => {

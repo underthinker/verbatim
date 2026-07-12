@@ -6,8 +6,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   Config,
   getConfig,
+  getInputMonitoringPermission,
   listModels,
   ManagedModel,
+  openInputMonitoringSettings,
   openDocs,
   setConfig,
   validateHotkey,
@@ -18,11 +20,24 @@ import ModelsTab from "./ModelsTab";
 const TABS = ["General", "Dictation", "Polish", "Models", "History", "About"] as const;
 type Tab = (typeof TABS)[number];
 
+const TAB_COPY: Record<Tab, { title: string; detail: string; glyph: string }> = {
+  General: { title: "Shortcuts", detail: "Choose how you start and stop dictation.", glyph: "⌘" },
+  Dictation: { title: "Dictation", detail: "Your active speech engine and language settings.", glyph: "◉" },
+  Polish: { title: "Writing style", detail: "Shape the text Verbatim produces for you.", glyph: "✦" },
+  Models: { title: "Models", detail: "Manage the local intelligence stored on this Mac.", glyph: "⬡" },
+  History: { title: "History", detail: "Review and recover recent transcriptions.", glyph: "↺" },
+  About: { title: "About Verbatim", detail: "Privacy, help, and open-source acknowledgements.", glyph: "i" },
+};
+
+const RIGHT_MODIFIER =
+  /^(right(option|alt|command|cmd|control|ctrl|shift)|r(alt|opt|cmd|ctrl|shift))$/i;
+
 export default function Settings() {
   const [config, setLocal] = useState<Config | null>(null);
   const [models, setModels] = useState<ManagedModel[]>([]);
   const [tab, setTab] = useState<Tab>("General");
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
+  const [inputMonitoring, setInputMonitoring] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [newTerm, setNewTerm] = useState("");
   const [newAppId, setNewAppId] = useState("");
@@ -49,6 +64,16 @@ export default function Settings() {
     getConfig().then(setLocal).catch(() => setLocal(null));
     listModels().then(setModels).catch(() => setModels([]));
   }, []);
+
+  useEffect(() => {
+    if (!config || !RIGHT_MODIFIER.test(config.hotkey.trim())) {
+      setInputMonitoring(null);
+      return;
+    }
+    getInputMonitoringPermission()
+      .then(setInputMonitoring)
+      .catch(() => setInputMonitoring(null));
+  }, [config?.hotkey]);
 
   if (!config) {
     return (
@@ -108,38 +133,60 @@ export default function Settings() {
 
   return (
     <main className="settings">
-      <div className="settings__tabs" role="tablist" aria-label="Settings sections">
-        {TABS.map((name, i) => (
-          <button
-            key={name}
-            ref={(el) => {
-              tabRefs.current[i] = el;
-            }}
-            role="tab"
-            id={`tab-${name}`}
-            aria-selected={tab === name}
-            aria-controls={`panel-${name}`}
-            tabIndex={tab === name ? 0 : -1}
-            className={tab === name ? "settings__tab settings__tab--active" : "settings__tab"}
-            onClick={() => setTab(name)}
-            onKeyDown={(e) => onTabKey(e, i)}
-          >
-            {name}
-          </button>
-        ))}
+      <div className="settings__chrome">
+        <header className="settings__brand">
+          <span className="settings__brand-mark" aria-hidden="true">V</span>
+          <span>
+            <strong>Verbatim</strong>
+            <small>Private, local dictation</small>
+          </span>
+          <span className="settings__local"><i /> On-device</span>
+        </header>
+        <div className="settings__tabs" role="tablist" aria-label="Settings sections">
+          {TABS.map((name, i) => (
+            <button
+              key={name}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
+              role="tab"
+              id={`tab-${name}`}
+              aria-selected={tab === name}
+              aria-controls={`panel-${name}`}
+              tabIndex={tab === name ? 0 : -1}
+              className={tab === name ? "settings__tab settings__tab--active" : "settings__tab"}
+              onClick={() => setTab(name)}
+              onKeyDown={(e) => onTabKey(e, i)}
+            >
+              <span aria-hidden="true">{TAB_COPY[name].glyph}</span>
+              {name}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* tabIndex 0: the Dictation panel holds no focusable control, so without
-          it a keyboard user can neither reach nor scroll that panel. */}
-      <section
-        className="settings__panel"
-        role="tabpanel"
-        id={`panel-${tab}`}
-        aria-labelledby={`tab-${tab}`}
-        tabIndex={0}
-      >
+      <div className="settings__workspace">
+        <header className="settings__page-header">
+          <div>
+            <h1>{TAB_COPY[tab].title}</h1>
+            <p>{TAB_COPY[tab].detail}</p>
+          </div>
+        </header>
+        {/* tabIndex 0: the Dictation panel holds no focusable control, so without
+            it a keyboard user can neither reach nor scroll that panel. */}
+        <section
+          className="settings__panel"
+          role="tabpanel"
+          id={`panel-${tab}`}
+          aria-labelledby={`tab-${tab}`}
+          tabIndex={0}
+        >
         {tab === "General" && (
-          <>
+          <div className="settings__card">
+            <div className="settings__card-heading">
+              <strong>Recording trigger</strong>
+              <span>The shortcut works from any application.</span>
+            </div>
             <label className="settings__field" htmlFor="hotkey">
               <span>Dictation hotkey</span>
               <input
@@ -156,6 +203,23 @@ export default function Settings() {
                 {hotkeyError}
               </p>
             )}
+            {RIGHT_MODIFIER.test(config.hotkey.trim()) && (
+              <p
+                className={
+                  inputMonitoring === "Granted"
+                    ? "settings__hint"
+                    : "settings__error"
+                }
+                role={inputMonitoring === "Granted" ? undefined : "alert"}
+              >
+                {inputMonitoring === "Granted"
+                  ? "Input Monitoring is granted for this build."
+                  : "macOS is denying Input Monitoring for this build. Remove the existing Verbatim row with the – button, add /Applications/Verbatim.app again, enable it, and restart Verbatim."}{" "}
+                <button className="link" onClick={openInputMonitoringSettings}>
+                  Open Input Monitoring
+                </button>
+              </p>
+            )}
             <fieldset className="settings__field">
               <legend>Hotkey mode</legend>
               {(["hold", "toggle"] as const).map((mode) => (
@@ -170,17 +234,21 @@ export default function Settings() {
                 </label>
               ))}
             </fieldset>
-          </>
+          </div>
         )}
 
         {tab === "Dictation" && (
-          <>
+          <div className="settings__card">
+            <div className="settings__card-heading">
+              <strong>Speech recognition</strong>
+              <span>Audio stays on this computer from capture to transcript.</span>
+            </div>
             <p className="settings__row">
               <span>Transcription model</span>
               <strong>{config.transcription_model ?? "None selected"}</strong>
             </p>
             <p className="settings__hint">Manage models in the Models tab.</p>
-          </>
+          </div>
         )}
 
         {tab === "Polish" && (
@@ -378,7 +446,8 @@ export default function Settings() {
             </fieldset>
           </>
         )}
-      </section>
+        </section>
+      </div>
 
       <footer className="settings__footer">
         {saved && <span className="settings__ok" role="status">Saved</span>}

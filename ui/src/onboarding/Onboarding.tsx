@@ -30,26 +30,34 @@ const STEPS = [
 ] as const;
 type Step = (typeof STEPS)[number];
 
+const STEP_META: Record<Step, { label: string; detail: string }> = {
+  welcome: { label: "Welcome", detail: "Meet Verbatim" },
+  microphone: { label: "Microphone", detail: "Hear your voice" },
+  typing: { label: "Typing", detail: "Write in any app" },
+  model: { label: "Speech model", detail: "Choose local AI" },
+  try: { label: "Try it", detail: "First dictation" },
+  polish: { label: "Writing style", detail: "Make it yours" },
+};
+
 /** A permission counts as satisfied for advancing when it is granted or the OS
  * does not require it (UX.md 6: permission steps are the only hard gates). */
 function isSatisfied(state: PermissionState): boolean {
   return state === "Granted" || state === "NotNeeded";
 }
 
-function ProgressDots({ index }: { index: number }) {
+function ProgressRail({ index }: { index: number }) {
   return (
-    <div
-      className="dots"
-      role="img"
-      aria-label={`Step ${index + 1} of ${STEPS.length}`}
-    >
+    <ol className="step-rail" aria-label={`Step ${index + 1} of ${STEPS.length}`}>
       {STEPS.map((step, i) => (
-        <span
-          key={step}
-          className={`dot${i === index ? " active" : ""}${i < index ? " done" : ""}`}
-        />
+        <li key={step} className={`${i === index ? "active" : ""}${i < index ? " done" : ""}`}>
+          <span className="step-rail__number" aria-hidden="true">{i < index ? "✓" : i + 1}</span>
+          <span>
+            <strong>{STEP_META[step].label}</strong>
+            <small>{STEP_META[step].detail}</small>
+          </span>
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
 
@@ -91,8 +99,21 @@ function PermissionStep({
 
   return (
     <div className="screen">
+      <div className="screen__eyebrow">Permission</div>
       <h1>{title}</h1>
       <p>{body}</p>
+      <div className="permission-card">
+        <span className="permission-card__icon" aria-hidden="true">
+          {capability === "microphone" ? "◉" : "⌨"}
+        </span>
+        <span>
+          <strong>{capability === "microphone" ? "Microphone access" : "Accessibility access"}</strong>
+          <small>{satisfied ? "Ready to use" : "Required to continue"}</small>
+        </span>
+        <span className={`permission-card__status${satisfied ? " ready" : ""}`}>
+          {satisfied ? "Granted" : "Not granted"}
+        </span>
+      </div>
       {satisfied ? (
         <p className="ok" role="status">
           <span className="tick" aria-hidden="true">
@@ -153,15 +174,21 @@ function ModelStep({ onReady }: { onReady: () => void }) {
 
   return (
     <div className="screen">
+      <div className="screen__eyebrow">Local intelligence</div>
       <h1>Download a speech model</h1>
       {model === null ? (
         <p>Checking your hardware...</p>
       ) : (
         <>
-          <p>
-            Recommended for this computer: <strong>{model.name}</strong> (
-            {formatBytes(model.sizeBytes)}).
-          </p>
+          <p>We picked the best balance of speed and accuracy for this Mac.</p>
+          <div className="model-choice">
+            <span className="model-choice__icon" aria-hidden="true">V</span>
+            <span>
+              <strong>{model.name}</strong>
+              <small>{formatBytes(model.sizeBytes)} · Runs entirely on-device</small>
+            </span>
+            <span className="model-choice__badge">Recommended</span>
+          </div>
           {done ? (
             <p className="ok" role="status">
               <span className="tick" aria-hidden="true">
@@ -221,16 +248,17 @@ function TryItStep() {
 
   return (
     <div className="screen">
+      <div className="screen__eyebrow">Test drive</div>
       <h1>Try it</h1>
-      <p>Hold your hotkey and say anything - the text appears below.</p>
+      <p>Hold your hotkey and say anything. This is a safe place to get the feel of it.</p>
       <textarea
         className="tryfield"
-        placeholder="Your dictation lands here..."
+        placeholder="Your first dictation will appear here…"
         aria-label="Dictation practice field"
       />
       <div className="actions">
         <button className="primary" onClick={() => invoke("trigger", { verb: "toggle" })}>
-          Start / stop dictation
+          Start a test recording
         </button>
         {/* The only feedback this step gives is the state word; announce it. */}
         <span className="muted" role="status">
@@ -244,6 +272,7 @@ function TryItStep() {
 function PolishStep({ onFinish }: { onFinish: (withPolish: boolean) => void }) {
   return (
     <div className="screen">
+      <div className="screen__eyebrow">Optional</div>
       <h1>Polish (optional)</h1>
       <p>Verbatim can tidy filler words and punctuation before it types.</p>
       <div className="example">
@@ -302,38 +331,49 @@ export default function Onboarding() {
 
   return (
     <main className="onboarding" ref={rootRef}>
-      {step === "welcome" && (
-        <div className="screen">
-          <h1>Welcome to Verbatim</h1>
-          <p>Press a hotkey, speak, and your words are typed into any app.</p>
-          <p className="privacy">
-            Everything runs on this computer. Nothing is ever uploaded.
-          </p>
-        </div>
-      )}
-      {step === "microphone" && (
-        <PermissionStep
-          capability="microphone"
-          title="Microphone"
-          body="Verbatim needs your microphone to hear you. Nothing is recorded until you press your hotkey."
-          onSatisfied={setMicOk}
-        />
-      )}
-      {step === "typing" && (
-        <PermissionStep
-          capability="textInjection"
-          title="Typing"
-          body="Verbatim types the transcribed text into whatever app you're using."
-          onSatisfied={setTypingOk}
-        />
-      )}
-      {step === "model" && <ModelStep onReady={() => undefined} />}
-      {step === "try" && <TryItStep />}
-      {step === "polish" && <PolishStep onFinish={finish} />}
-
-      <ProgressDots index={index} />
+      <header className="onboarding__brand">
+        <span className="onboarding__brand-mark" aria-hidden="true">V</span>
+        <span><strong>Verbatim</strong><small>Private dictation for your Mac</small></span>
+      </header>
+      <div className="onboarding__body">
+        <aside><ProgressRail index={index} /></aside>
+        <section className="onboarding__content">
+          {step === "welcome" && (
+            <div className="screen screen--welcome">
+              <div className="welcome-orb" aria-hidden="true"><span>V</span></div>
+              <div className="screen__eyebrow">Welcome</div>
+              <h1>Your voice, instantly in writing.</h1>
+              <p>Press a hotkey, speak naturally, and Verbatim types polished text into any app.</p>
+              <div className="privacy-card">
+                <span aria-hidden="true">⌁</span>
+                <span><strong>Private by design</strong><small>Audio and text never leave this Mac.</small></span>
+              </div>
+            </div>
+          )}
+          {step === "microphone" && (
+            <PermissionStep
+              capability="microphone"
+              title="Let Verbatim hear you"
+              body="Microphone access is used only while you are actively dictating."
+              onSatisfied={setMicOk}
+            />
+          )}
+          {step === "typing" && (
+            <PermissionStep
+              capability="textInjection"
+              title="Type into any application"
+              body="Accessibility lets Verbatim place your finished transcript exactly where your cursor is."
+              onSatisfied={setTypingOk}
+            />
+          )}
+          {step === "model" && <ModelStep onReady={() => undefined} />}
+          {step === "try" && <TryItStep />}
+          {step === "polish" && <PolishStep onFinish={finish} />}
+        </section>
+      </div>
 
       <nav className="nav">
+        <span className="nav__count">{index + 1} of {STEPS.length}</span>
         {index > 0 && step !== "polish" && (
           <button className="link" onClick={back}>
             Back
@@ -354,7 +394,7 @@ export default function Onboarding() {
               disabled={!canAdvance}
               aria-describedby={canAdvance ? undefined : "gate-reason"}
             >
-              {step === "welcome" ? "Get started" : "Continue"}
+              {step === "welcome" ? "Set up Verbatim" : "Continue"}
             </button>
           </>
         )}

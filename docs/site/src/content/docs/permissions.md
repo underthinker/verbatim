@@ -34,6 +34,15 @@ Because the build is unsigned, macOS keys these two grants to the exact bytes of
 Installing a new version therefore clears both grants, and Verbatim asks for them again on the next dictation.
 The stale entries left behind in System Settings are harmless; you can remove them with the **-** button.
 
+### Input Monitoring for a modifier-only hotkey
+
+An ordinary shortcut such as **Ctrl + Alt + Space** does not need Input Monitoring.
+A bare right-side modifier such as **Right Option** does, because Verbatim must listen for that key's press and release events.
+Enable it under System Settings -> Privacy & Security -> Input Monitoring, then restart Verbatim.
+Unsigned rebuilds must be enabled again after each install for the same identity reason described above.
+If Verbatim is already shown as enabled but the hotkey does nothing, select its stale row, click **-**, click **+**, add `/Applications/Verbatim.app` again, and restart the app.
+Toggling a stale row off and on does not update the code identity macOS stored with it.
+
 ## Windows
 
 Typing works out of the box - no extra permission is needed for ordinary apps.

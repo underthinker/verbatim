@@ -91,7 +91,14 @@ impl ModifierTapBackend {
     /// Fails if Input Monitoring is not granted: the tap cannot be created, so
     /// we prompt for access first, then surface a typed error the caller logs.
     pub fn new(key: ModifierKey, on_event: HotkeyCallback) -> Result<Self, HotkeyError> {
-        request_input_monitoring();
+        if !request_input_monitoring() {
+            return Err(HotkeyError::Backend(
+                "macOS denied Input Monitoring; remove the stale Verbatim entry in System \
+                 Settings > Privacy & Security > Input Monitoring, add the installed app \
+                 again, then restart Verbatim"
+                    .to_owned(),
+            ));
+        }
 
         let keycode = key.keycode();
         let device_mask = key.device_mask();
@@ -159,12 +166,14 @@ impl MainThreadHotkey for ModifierTapBackend {
 
 /// Prompt for Input Monitoring if not already granted. Non-blocking: it returns
 /// the current status and shows the system prompt at most once per app.
-fn request_input_monitoring() {
+fn request_input_monitoring() -> bool {
     // SAFETY: both are parameterless CoreGraphics C entry points (macOS 10.15+)
     // that return a bool and have no other effect.
     unsafe {
-        if !CGPreflightListenEventAccess() {
-            let _ = CGRequestListenEventAccess();
+        if CGPreflightListenEventAccess() {
+            true
+        } else {
+            CGRequestListenEventAccess()
         }
     }
 }

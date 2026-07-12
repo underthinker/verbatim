@@ -35,6 +35,15 @@ export const setConfig = (config: Config) =>
 export const validateHotkey = (chord: string) =>
   invoke<void>("settings_validate_hotkey", { chord });
 
+export const openInputMonitoringSettings = () =>
+  invoke<void>("onboarding_open_settings", { capability: "inputMonitoring" });
+
+export const getInputMonitoringPermission = () =>
+  invoke<"Granted" | "Denied" | "Undetermined" | "NotNeeded">(
+    "onboarding_permission",
+    { capability: "inputMonitoring" },
+  );
+
 /** Mirrors `models::ManagedModel` (camelCase over the wire). */
 export interface ManagedModel {
   id: string;

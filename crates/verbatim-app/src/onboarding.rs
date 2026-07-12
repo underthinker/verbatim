@@ -66,7 +66,7 @@ pub const WINDOW_LABEL: &str = "onboarding";
 pub fn create_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("onboarding.html".into()))
         .title("Welcome to Verbatim")
-        .inner_size(560.0, 640.0)
+        .inner_size(680.0, 720.0)
         .resizable(false)
         .center()
         .build()
@@ -116,6 +116,7 @@ impl From<&ModelSpec> for ModelInfo {
 
 /// The dependencies onboarding drives - all trait seams so the flow runs over
 /// the deterministic fakes in tests and CI.
+#[derive(Clone)]
 pub struct Onboarding {
     probe: Arc<dyn PermissionProbe>,
     requester: Arc<dyn PermissionRequest>,

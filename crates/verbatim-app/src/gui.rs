@@ -70,8 +70,11 @@ fn permission_settings_url(capability: Capability) -> Option<&'static str> {
         Capability::Microphone => {
             Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
         }
-        Capability::TextInjection | Capability::InputMonitoring => {
+        Capability::TextInjection => {
             Some("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        }
+        Capability::InputMonitoring => {
+            Some("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
         }
     }
 }
@@ -211,13 +214,14 @@ fn onboarding_catalog(state: tauri::State<'_, OnboardingShell>) -> Vec<ModelInfo
 /// the resolved on-disk path. An interrupted download surfaces as an error for
 /// the webview to offer a resumable retry (E8).
 #[tauri::command]
-fn onboarding_download_model(
+async fn onboarding_download_model(
     state: tauri::State<'_, OnboardingShell>,
     model_id: String,
 ) -> Result<String, String> {
-    state
-        .service
-        .download_model(&model_id)
+    let service = state.service.clone();
+    tauri::async_runtime::spawn_blocking(move || service.download_model(&model_id))
+        .await
+        .map_err(|err| format!("model download worker failed: {err}"))?
         .map_err(|err| err.to_string())
 }
 
@@ -296,11 +300,15 @@ fn models_disk_usage(state: tauri::State<'_, ModelManager>) -> u64 {
 /// the resolved on-disk path. An interruption surfaces as an error for the UI
 /// to offer a resumable retry (E8).
 #[tauri::command]
-fn models_download(
+async fn models_download(
     state: tauri::State<'_, ModelManager>,
     model_id: String,
 ) -> Result<String, String> {
-    state.download(&model_id).map_err(|err| err.to_string())
+    let manager = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || manager.download(&model_id))
+        .await
+        .map_err(|err| format!("model download worker failed: {err}"))?
+        .map_err(|err| err.to_string())
 }
 
 /// Delete an installed model; clears the default for its kind if it was set.
