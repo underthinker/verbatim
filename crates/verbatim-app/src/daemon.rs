@@ -73,51 +73,10 @@ pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
     // shortcut running `verbatim trigger`).
     #[cfg(all(feature = "real-injection", target_os = "linux"))]
     let _hotkey = {
-        use std::time::Instant;
-
-        use verbatim_core::hotkey::{HotkeyMode, HotkeySemantics};
-        use verbatim_platform::linux::PortalHotkeyBackend;
-        use verbatim_platform::{HotkeyBinding, HotkeyManager};
-
-        let chord =
-            std::env::var("VERBATIM_HOTKEY").unwrap_or_else(|_| "CTRL+ALT+SPACE".to_owned());
-        let mode = match std::env::var("VERBATIM_HOTKEY_MODE").as_deref() {
-            Ok("toggle") => HotkeyMode::Toggle,
-            // Activated/Deactivated arrive as a pair, so push-to-talk holds work.
-            _ => HotkeyMode::Hold,
-        };
-
-        let (edge_tx, mut edge_rx) = tokio::sync::mpsc::unbounded_channel();
-        {
-            let handle = handle.clone();
-            tokio::spawn(async move {
-                let mut semantics = HotkeySemantics::new(mode);
-                while let Some(event) = edge_rx.recv().await {
-                    if let Some(trigger) = semantics.on_event(event, Instant::now())
-                        && handle.trigger(trigger).await.is_err()
-                    {
-                        break; // runner gone
-                    }
-                }
-            });
-        }
-
-        let mut backend = PortalHotkeyBackend::new();
-        match backend.register(
-            &HotkeyBinding {
-                chord: chord.clone(),
-            },
-            Box::new(move |event| {
-                let _ = edge_tx.send(event);
-            }),
-        ) {
-            Ok(()) => tracing::info!(%chord, ?mode, "portal global shortcut registered"),
-            Err(err) => tracing::warn!(
-                %chord, ?err,
-                "portal hotkey registration failed; CLI triggers still work"
-            ),
-        }
-        backend
+        let (chord, mode) = hotkey_selection();
+        let (edge_tx, semantics) = hotkey_semantics_channel(handle.clone(), mode);
+        tokio::spawn(semantics);
+        register_linux_hotkey(&chord, mode, edge_tx)
     };
 
     // Phase 7: RegisterHotKey-backed hotkey (windows doc stub). The backend
@@ -126,52 +85,10 @@ pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
     // to CLI-only triggers.
     #[cfg(all(feature = "real-injection", target_os = "windows"))]
     let _hotkey = {
-        use std::time::Instant;
-
-        use verbatim_core::hotkey::{HotkeyMode, HotkeySemantics};
-        use verbatim_platform::windows::WinHotkeyBackend;
-        use verbatim_platform::{HotkeyBinding, HotkeyManager};
-
-        let chord =
-            std::env::var("VERBATIM_HOTKEY").unwrap_or_else(|_| "CTRL+ALT+SPACE".to_owned());
-        let mode = match std::env::var("VERBATIM_HOTKEY_MODE").as_deref() {
-            Ok("toggle") => HotkeyMode::Toggle,
-            // WM_HOTKEY presses are paired with polled release edges, so
-            // push-to-talk holds work.
-            _ => HotkeyMode::Hold,
-        };
-
-        let (edge_tx, mut edge_rx) = tokio::sync::mpsc::unbounded_channel();
-        {
-            let handle = handle.clone();
-            tokio::spawn(async move {
-                let mut semantics = HotkeySemantics::new(mode);
-                while let Some(event) = edge_rx.recv().await {
-                    if let Some(trigger) = semantics.on_event(event, Instant::now())
-                        && handle.trigger(trigger).await.is_err()
-                    {
-                        break; // runner gone
-                    }
-                }
-            });
-        }
-
-        let mut backend = WinHotkeyBackend::new();
-        match backend.register(
-            &HotkeyBinding {
-                chord: chord.clone(),
-            },
-            Box::new(move |event| {
-                let _ = edge_tx.send(event);
-            }),
-        ) {
-            Ok(()) => tracing::info!(%chord, ?mode, "global hotkey registered"),
-            Err(err) => tracing::warn!(
-                %chord, ?err,
-                "hotkey registration failed; CLI triggers still work"
-            ),
-        }
-        backend
+        let (chord, mode) = hotkey_selection();
+        let (edge_tx, semantics) = hotkey_semantics_channel(handle.clone(), mode);
+        tokio::spawn(semantics);
+        register_windows_hotkey(&chord, mode, edge_tx)
     };
 
     let result = serve_with_handle(path, handle).await;
@@ -191,25 +108,11 @@ pub async fn serve(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
 #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
 pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<()> {
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
-    use verbatim_core::hotkey::{HotkeyMode, HotkeySemantics};
-    use verbatim_platform::hotkey::{GlobalHotkeyBackend, MainThreadHotkey};
-    use verbatim_platform::modifier_tap::{ModifierKey, ModifierTapBackend};
-    use verbatim_platform::{HotkeyBinding, HotkeyCallback, HotkeyManager};
+    use verbatim_platform::hotkey::MainThreadHotkey;
 
-    // The trigger is overridable; the default is the right Option key as
-    // push-to-talk. A bare right-side modifier is driven by a CGEventTap
-    // (`modifier_tap`); any other value is a chord bound via `global-hotkey`.
-    let chord = std::env::var("VERBATIM_HOTKEY").unwrap_or_else(|_| "RightOption".to_owned());
-    let modifier = ModifierKey::parse(&chord);
-    // Modifier keys default to push-to-talk (hold); chords default to toggle.
-    let mode = match std::env::var("VERBATIM_HOTKEY_MODE").as_deref() {
-        Ok("hold") => HotkeyMode::Hold,
-        Ok("toggle") => HotkeyMode::Toggle,
-        _ if modifier.is_some() => HotkeyMode::Hold,
-        _ => HotkeyMode::Toggle,
-    };
+    let (chord, mode) = hotkey_selection();
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -250,20 +153,8 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
     // carries Pressed/Released, so the backend must report whether the raw
     // modifier (default Shift) was co-held. Wire that when the per-OS hotkey
     // backends grow modifier-state reporting; the core seam is done.
-    let (edge_tx, mut edge_rx) = tokio::sync::mpsc::unbounded_channel();
-    {
-        let handle = handle.clone();
-        runtime.spawn(async move {
-            let mut semantics = HotkeySemantics::new(mode);
-            while let Some(event) = edge_rx.recv().await {
-                if let Some(trigger) = semantics.on_event(event, Instant::now())
-                    && handle.trigger(trigger).await.is_err()
-                {
-                    break; // runner gone
-                }
-            }
-        });
-    }
+    let (edge_tx, semantics) = hotkey_semantics_channel(handle.clone(), mode);
+    runtime.spawn(semantics);
 
     // The socket server owns signal handling and socket cleanup; when it
     // returns, it flips the flag so the main-thread pump loop exits too.
@@ -278,45 +169,10 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
         });
     }
 
-    // Build the edge callback fresh per branch (it is consumed on registration).
-    let make_callback = || -> HotkeyCallback {
-        let edge_tx = edge_tx.clone();
-        Box::new(move |event| {
-            let _ = edge_tx.send(event);
-        })
-    };
-
     // Register on this (main) thread; both backends deliver edges through their
     // run-loop source, which the pump below services. A failure degrades to
     // CLI-only: a bare, unregistered backend just idles the run loop.
-    let source: Box<dyn MainThreadHotkey> = match modifier {
-        Some(key) => match ModifierTapBackend::new(key, make_callback()) {
-            Ok(backend) => {
-                tracing::info!(%chord, ?mode, "modifier-key push-to-talk registered");
-                Box::new(backend)
-            }
-            Err(err) => {
-                tracing::error!(%chord, ?err, "hotkey registration failed; CLI triggers still work");
-                Box::new(GlobalHotkeyBackend::new())
-            }
-        },
-        None => {
-            let mut backend = GlobalHotkeyBackend::new();
-            match backend.register(
-                &HotkeyBinding {
-                    chord: chord.clone(),
-                },
-                make_callback(),
-            ) {
-                Ok(()) => tracing::info!(%chord, ?mode, "global hotkey registered"),
-                Err(err) => tracing::error!(
-                    %chord, ?err,
-                    "hotkey registration failed; CLI triggers still work"
-                ),
-            }
-            Box::new(backend)
-        }
-    };
+    let source = register_macos_hotkey(&chord, mode, edge_tx);
 
     // Menu-bar presence with a Quit item (ROADMAP M1). Best-effort: if the
     // status item cannot be installed the daemon still runs on the hotkey and
@@ -349,6 +205,178 @@ pub fn serve_with_hotkey(path: &Path, events: Arc<EventBus>) -> std::io::Result<
     // Reaching here is an orderly shutdown, so the next start is not a crash.
     crate::stats::end_run_clean(&stats_dir);
     Ok(())
+}
+
+/// The hotkey the product should bind: `VERBATIM_HOTKEY` / `VERBATIM_HOTKEY_MODE`
+/// override the persisted settings (dev/bench workflows); otherwise the config's
+/// chord and mode apply (a settings rebind takes effect on next launch). Shared
+/// by the headless daemon and the GUI shell so both bind the same key.
+#[cfg(any(
+    all(feature = "global-hotkey", target_os = "macos"),
+    all(
+        feature = "real-injection",
+        any(target_os = "linux", target_os = "windows")
+    )
+))]
+pub(crate) fn hotkey_selection() -> (String, verbatim_core::hotkey::HotkeyMode) {
+    use verbatim_core::hotkey::HotkeyMode;
+
+    let config = Config::load();
+    let chord = std::env::var("VERBATIM_HOTKEY").unwrap_or(config.hotkey);
+    let mode = match std::env::var("VERBATIM_HOTKEY_MODE").as_deref() {
+        Ok("hold") => HotkeyMode::Hold,
+        Ok("toggle") => HotkeyMode::Toggle,
+        _ => config.hotkey_mode.to_core(),
+    };
+    (chord, mode)
+}
+
+/// Turn raw hotkey edges into runner triggers: returns the edge sender the
+/// platform backend feeds and the semantics future the caller spawns on its
+/// runtime (tokio in the daemon, `tauri::async_runtime` in the shell).
+#[cfg(any(
+    all(feature = "global-hotkey", target_os = "macos"),
+    all(
+        feature = "real-injection",
+        any(target_os = "linux", target_os = "windows")
+    )
+))]
+pub(crate) fn hotkey_semantics_channel(
+    handle: RunnerHandle,
+    mode: verbatim_core::hotkey::HotkeyMode,
+) -> (
+    tokio::sync::mpsc::UnboundedSender<verbatim_platform::HotkeyEvent>,
+    impl std::future::Future<Output = ()> + Send + 'static,
+) {
+    use std::time::Instant;
+
+    use verbatim_core::hotkey::HotkeySemantics;
+
+    let (edge_tx, mut edge_rx) = tokio::sync::mpsc::unbounded_channel();
+    let semantics_task = async move {
+        let mut semantics = HotkeySemantics::new(mode);
+        while let Some(event) = edge_rx.recv().await {
+            if let Some(trigger) = semantics.on_event(event, Instant::now())
+                && handle.trigger(trigger).await.is_err()
+            {
+                break; // runner gone
+            }
+        }
+    };
+    (edge_tx, semantics_task)
+}
+
+/// Register the macOS hotkey on the calling thread, which must be the main
+/// thread: a bare right-side modifier (`RightOption`) is driven by a CGEventTap
+/// (`modifier_tap`); any other value is a chord bound via `global-hotkey`. Both
+/// deliver edges through a main-run-loop source - the headless daemon pumps it,
+/// the GUI shell's webview loop runs it (the chord backend additionally needs
+/// its channel drained; see `MainThreadHotkey::drain`). A registration failure
+/// degrades to CLI-only triggers: a bare, unregistered backend just idles.
+#[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+pub(crate) fn register_macos_hotkey(
+    chord: &str,
+    mode: verbatim_core::hotkey::HotkeyMode,
+    edge_tx: tokio::sync::mpsc::UnboundedSender<verbatim_platform::HotkeyEvent>,
+) -> Box<dyn verbatim_platform::hotkey::MainThreadHotkey> {
+    use verbatim_platform::hotkey::GlobalHotkeyBackend;
+    use verbatim_platform::modifier_tap::{ModifierKey, ModifierTapBackend};
+    use verbatim_platform::{HotkeyBinding, HotkeyCallback, HotkeyManager};
+
+    // Build the edge callback fresh per branch (it is consumed on registration).
+    let make_callback = || -> HotkeyCallback {
+        let edge_tx = edge_tx.clone();
+        Box::new(move |event| {
+            let _ = edge_tx.send(event);
+        })
+    };
+
+    match ModifierKey::parse(chord) {
+        Some(key) => match ModifierTapBackend::new(key, make_callback()) {
+            Ok(backend) => {
+                tracing::info!(%chord, ?mode, "modifier-key push-to-talk registered");
+                Box::new(backend)
+            }
+            Err(err) => {
+                tracing::error!(%chord, ?err, "hotkey registration failed; CLI triggers still work");
+                Box::new(GlobalHotkeyBackend::new())
+            }
+        },
+        None => {
+            let mut backend = GlobalHotkeyBackend::new();
+            match backend.register(
+                &HotkeyBinding {
+                    chord: chord.to_owned(),
+                },
+                make_callback(),
+            ) {
+                Ok(()) => tracing::info!(%chord, ?mode, "global hotkey registered"),
+                Err(err) => tracing::error!(
+                    %chord, ?err,
+                    "hotkey registration failed; CLI triggers still work"
+                ),
+            }
+            Box::new(backend)
+        }
+    }
+}
+
+/// Register the GlobalShortcuts-portal hotkey (spike 1). The portal listener
+/// lives on its own thread, so the backend only has to outlive its host.
+#[cfg(all(feature = "real-injection", target_os = "linux"))]
+pub(crate) fn register_linux_hotkey(
+    chord: &str,
+    mode: verbatim_core::hotkey::HotkeyMode,
+    edge_tx: tokio::sync::mpsc::UnboundedSender<verbatim_platform::HotkeyEvent>,
+) -> verbatim_platform::linux::PortalHotkeyBackend {
+    use verbatim_platform::linux::PortalHotkeyBackend;
+    use verbatim_platform::{HotkeyBinding, HotkeyManager};
+
+    let mut backend = PortalHotkeyBackend::new();
+    match backend.register(
+        &HotkeyBinding {
+            chord: chord.to_owned(),
+        },
+        Box::new(move |event| {
+            let _ = edge_tx.send(event);
+        }),
+    ) {
+        Ok(()) => tracing::info!(%chord, ?mode, "portal global shortcut registered"),
+        Err(err) => tracing::warn!(
+            %chord, ?err,
+            "portal hotkey registration failed; CLI triggers still work"
+        ),
+    }
+    backend
+}
+
+/// Register the RegisterHotKey-backed Windows hotkey. The backend owns its
+/// message-loop thread, so it only has to outlive its host.
+#[cfg(all(feature = "real-injection", target_os = "windows"))]
+pub(crate) fn register_windows_hotkey(
+    chord: &str,
+    mode: verbatim_core::hotkey::HotkeyMode,
+    edge_tx: tokio::sync::mpsc::UnboundedSender<verbatim_platform::HotkeyEvent>,
+) -> verbatim_platform::windows::WinHotkeyBackend {
+    use verbatim_platform::windows::WinHotkeyBackend;
+    use verbatim_platform::{HotkeyBinding, HotkeyManager};
+
+    let mut backend = WinHotkeyBackend::new();
+    match backend.register(
+        &HotkeyBinding {
+            chord: chord.to_owned(),
+        },
+        Box::new(move |event| {
+            let _ = edge_tx.send(event);
+        }),
+    ) {
+        Ok(()) => tracing::info!(%chord, ?mode, "global hotkey registered"),
+        Err(err) => tracing::warn!(
+            %chord, ?err,
+            "hotkey registration failed; CLI triggers still work"
+        ),
+    }
+    backend
 }
 
 /// Deps the served daemon runs on: fakes by default, with each real backend
