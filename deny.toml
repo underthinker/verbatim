@@ -85,7 +85,7 @@ multiple-versions = "warn"
 # ENGINEERING.md 8: no outbound-capable dependencies outside the model
 # downloader. When the downloader crate lands, it gets a `wrappers` exception.
 deny = [
-    { crate = "reqwest" },
+    { crate = "reqwest", wrappers = ["verbatim-model-downloader"] },
     { crate = "ureq" },
     { crate = "curl" },
     { crate = "isahc" },

@@ -152,7 +152,13 @@ impl Onboarding {
     pub fn request_permission(&self, capability: Capability) -> PermissionState {
         match self.requester.request(capability) {
             Ok(()) => self.probe.probe(capability),
-            Err(_) => PermissionState::NotNeeded,
+            Err(verbatim_platform::PermissionRequestError::Unsupported(_)) => {
+                PermissionState::NotNeeded
+            }
+            Err(err) => {
+                tracing::warn!(?err, ?capability, "requesting permission failed");
+                self.probe.probe(capability)
+            }
         }
     }
 

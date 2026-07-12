@@ -31,6 +31,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 verbatim-core = { path = "crates/verbatim-core" }
 verbatim-platform = { path = "crates/verbatim-platform" }
 verbatim-engines = { path = "crates/verbatim-engines" }
+verbatim-model-downloader = { path = "crates/verbatim-model-downloader" }
 
 [workspace.lints.clippy]
 # ENGINEERING.md section 3: no unwrap/expect outside tests and startup.
