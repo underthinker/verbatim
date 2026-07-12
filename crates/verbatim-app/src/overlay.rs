@@ -34,8 +34,12 @@ pub const WINDOW_LABEL: &str = "overlay";
 pub const EVENT_CHANNEL: &str = "verbatim://overlay";
 
 /// Logical pill size (UX.md 7: small pill).
-const WIDTH: f64 = 320.0;
-const HEIGHT: f64 = 72.0;
+// The transparent host must fit the largest rendered state, not only the
+// compact listening pill. Error copy can wrap beside an action affordance;
+// keeping the native host smaller than the CSS pill clipped exactly the useful
+// part of recovery messages on Retina displays.
+const WIDTH: f64 = 480.0;
+const HEIGHT: f64 = 104.0;
 /// Logical gap between the pill and the bottom edge of the display.
 const BOTTOM_MARGIN: f64 = 48.0;
 
