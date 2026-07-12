@@ -163,6 +163,25 @@ pub enum HotkeyError {
 const MODIFIERS: &[&str] = &[
     "ctrl", "control", "alt", "option", "shift", "cmd", "super", "meta",
 ];
+// Bare right-side modifiers the macOS CGEventTap backend drives as
+// push-to-talk triggers. Mirrors `verbatim_platform::modifier_tap::
+// ModifierKey::parse` (not importable here: that module is macOS- and
+// feature-gated, while validation must compile everywhere).
+#[cfg(target_os = "macos")]
+const MODIFIER_TAP_TOKENS: &[&str] = &[
+    "rightoption",
+    "rightalt",
+    "ralt",
+    "ropt",
+    "rightcommand",
+    "rightcmd",
+    "rcmd",
+    "rightcontrol",
+    "rightctrl",
+    "rctrl",
+    "rightshift",
+    "rshift",
+];
 // A conservative reserved set: chords the OS almost always claims. Not
 // exhaustive - the real per-OS probe supersedes this (see validate_hotkey).
 const RESERVED: &[&str] = &["ctrl+alt+delete", "cmd+q", "cmd+tab", "alt+f4"];
@@ -177,6 +196,12 @@ fn parse_chord(chord: &str) -> Result<(), HotkeyError> {
     let normalized = trimmed.to_lowercase();
     if RESERVED.contains(&normalized.as_str()) {
         return Err(HotkeyError::Reserved(trimmed.to_owned()));
+    }
+    // A bare right-side modifier is a valid macOS binding (push-to-talk via
+    // the modifier tap), not a chord.
+    #[cfg(target_os = "macos")]
+    if MODIFIER_TAP_TOKENS.contains(&normalized.as_str()) {
+        return Ok(());
     }
 
     let mut modifiers = 0;
@@ -396,6 +421,19 @@ mod tests {
             assert!(
                 Config::validate_hotkey(chord).is_ok(),
                 "{chord} should be valid"
+            );
+        }
+    }
+
+    /// A bare right-side modifier is the macOS push-to-talk binding
+    /// (`modifier_tap`); the validator must not reject it as a chord.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bare_right_modifiers_accepted_on_macos() {
+        for token in ["RightOption", "rcmd", "RightShift", "rctrl"] {
+            assert!(
+                Config::validate_hotkey(token).is_ok(),
+                "{token} should be valid"
             );
         }
     }

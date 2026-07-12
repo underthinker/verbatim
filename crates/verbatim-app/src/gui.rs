@@ -434,6 +434,36 @@ pub fn run() -> ExitCode {
     let tray_handle = handle.clone();
     let tray_history = Arc::clone(&history);
 
+    // Global hotkey: the shell binds the same chord the headless daemon does,
+    // so the installed app dictates without a separate daemon process. On
+    // macOS registration must happen on this (main) thread before the webview
+    // loop starts; the backend's run-loop source is then serviced by the
+    // webview event loop itself, and the chord path's channel is drained from
+    // the run callback below.
+    #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+    let hotkey = {
+        let (chord, mode) = daemon::hotkey_selection();
+        let (edge_tx, semantics) = daemon::hotkey_semantics_channel(handle.clone(), mode);
+        tauri::async_runtime::spawn(semantics);
+        daemon::register_macos_hotkey(&chord, mode, edge_tx)
+    };
+    // The Linux/Windows backends own their delivery threads, so they only have
+    // to outlive the shell: hold them until the webview loop returns.
+    #[cfg(all(feature = "real-injection", target_os = "linux"))]
+    let _hotkey = {
+        let (chord, mode) = daemon::hotkey_selection();
+        let (edge_tx, semantics) = daemon::hotkey_semantics_channel(handle.clone(), mode);
+        tauri::async_runtime::spawn(semantics);
+        daemon::register_linux_hotkey(&chord, mode, edge_tx)
+    };
+    #[cfg(all(feature = "real-injection", target_os = "windows"))]
+    let _hotkey = {
+        let (chord, mode) = daemon::hotkey_selection();
+        let (edge_tx, semantics) = daemon::hotkey_semantics_channel(handle.clone(), mode);
+        tauri::async_runtime::spawn(semantics);
+        daemon::register_windows_hotkey(&chord, mode, edge_tx)
+    };
+
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Shell { handle })
@@ -491,19 +521,31 @@ pub fn run() -> ExitCode {
             }
             Ok(())
         })
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!());
+
+    let app = match result {
+        Ok(app) => app,
+        Err(err) => {
+            eprintln!("verbatim: shell failed: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    app.run(move |_app, _event| {
+        // The chord backend's edges land on a process-global channel that must
+        // be drained on the main thread each time the event loop turns (the
+        // modifier-tap backend delivers straight from its run-loop source and
+        // drains as a no-op).
+        #[cfg(all(feature = "global-hotkey", target_os = "macos"))]
+        if matches!(_event, tauri::RunEvent::MainEventsCleared) {
+            hotkey.drain();
+        }
+    });
 
     // The webview loop returned, so this is an orderly shutdown: clear the
     // marker so the next launch is not counted as a crash.
     crate::stats::end_run_clean(&stats_dir);
-
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("verbatim: shell failed: {err}");
-            ExitCode::FAILURE
-        }
-    }
+    ExitCode::SUCCESS
 }
 
 #[cfg(test)]

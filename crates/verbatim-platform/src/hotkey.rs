@@ -28,11 +28,21 @@ use crate::types::{HotkeyBinding, HotkeyEvent};
 pub trait MainThreadHotkey {
     /// Advance the OS event loop for at most `timeout`, delivering edges.
     fn pump(&self, timeout: Duration);
+
+    /// Forward edges an externally-driven event loop already delivered (a GUI
+    /// shell owns the run loop and must not pump it re-entrantly). Default:
+    /// nothing, for backends whose callback fires straight from its run-loop
+    /// source.
+    fn drain(&self) {}
 }
 
 impl MainThreadHotkey for GlobalHotkeyBackend {
     fn pump(&self, timeout: Duration) {
         GlobalHotkeyBackend::pump(self, timeout);
+    }
+
+    fn drain(&self) {
+        self.forward_pending();
     }
 }
 
@@ -61,7 +71,14 @@ impl GlobalHotkeyBackend {
     /// called [`register`](HotkeyManager::register) - the main thread on macOS.
     pub fn pump(&self, timeout: Duration) {
         pump_event_loop(timeout);
+        self.forward_pending();
+    }
 
+    /// Forward any edges already sitting on the crate's process-global channel
+    /// for our chord. The run loop must have run for edges to be there - via
+    /// [`pump`](Self::pump) in the headless daemon, or the GUI shell's own
+    /// event loop.
+    fn forward_pending(&self) {
         let Some(reg) = &self.registered else {
             return;
         };

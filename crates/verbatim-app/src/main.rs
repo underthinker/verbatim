@@ -26,7 +26,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Run the background instance: owns the session runner and the trigger
-    /// socket. This is the default when no subcommand is given.
+    /// socket. This is the default when no subcommand is given, except a macOS
+    /// app-bundle launch (Finder/Dock pass no args), which runs the GUI.
     Daemon,
     /// Run the Tauri shell: the daemon plus the desktop window (M2). CLI
     /// triggers keep working against it over the same socket.
@@ -59,9 +60,27 @@ enum TriggerVerb {
     Toggle,
 }
 
+/// What a bare `verbatim` runs: the headless daemon from the CLI (M1 parity),
+/// but the desktop shell when launched from a macOS app bundle - Finder and
+/// the Dock pass no arguments, and a double-click must open the product, not
+/// park a headless process.
+fn default_command() -> Command {
+    #[cfg(target_os = "macos")]
+    {
+        let from_bundle = std::env::current_exe().is_ok_and(|exe| {
+            exe.components()
+                .any(|part| part.as_os_str().to_string_lossy().ends_with(".app"))
+        });
+        if from_bundle {
+            return Command::Gui;
+        }
+    }
+    Command::Daemon
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    match cli.command.unwrap_or(Command::Daemon) {
+    match cli.command.unwrap_or_else(default_command) {
         // The daemon may need to own the main thread's run loop (macOS global
         // hotkey), so it manages its own runtime rather than running under one.
         Command::Daemon => run_daemon(),
