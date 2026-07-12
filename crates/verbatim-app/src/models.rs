@@ -158,7 +158,7 @@ impl ModelManager {
     }
 
     fn model_path(&self, model_id: &str) -> PathBuf {
-        self.models_dir.join(format!("{model_id}.bin"))
+        model_file(&self.models_dir, model_id)
     }
 
     fn managed(&self, spec: &ModelSpec, config: &Config) -> ManagedModel {
@@ -197,6 +197,19 @@ pub enum ModelError {
 /// The model store: `<data dir>/models`, overridable via `$VERBATIM_DATA_DIR`.
 pub fn models_dir() -> PathBuf {
     config::data_dir().join("models")
+}
+
+/// The on-disk file for a catalog model id, present or not.
+fn model_file(models_dir: &Path, model_id: &str) -> PathBuf {
+    models_dir.join(format!("{model_id}.bin"))
+}
+
+/// Resolve a configured catalog id to its installed model file, or `None` when
+/// the file is not on disk. This is how engine construction (daemon/GUI boot)
+/// finds the model the settings/onboarding flow chose.
+pub fn installed_model_path(model_id: &str) -> Option<PathBuf> {
+    let path = model_file(&models_dir(), model_id);
+    path.exists().then_some(path)
 }
 
 /// File size in bytes, or `None` if it does not exist / cannot be read.
