@@ -1,246 +1,162 @@
 :root {
-  --bg: #ffffff;
-  --fg: #16181d;
-  --muted: #6b7280;
-  --accent: #4f46e5;
-  --accent-fg: #ffffff;
-  --track: #e5e7eb;
-  --ok: #15803d;
-  --err: #b91c1c;
-  --card: #f6f7f9;
+  color-scheme: light dark;
+  --bg: #f3f5f2;
+  --surface: rgba(255, 255, 255, 0.84);
+  --card: #fff;
+  --fg: #17201d;
+  --muted: #707a76;
+  --faint: #98a19d;
+  --line: rgba(27, 45, 37, 0.1);
+  --accent: #168a70;
+  --accent-dark: #0d705b;
+  --accent-soft: #dcf2eb;
+  --accent-fg: #fff;
+  --ok: #147b63;
+  --err: #b54747;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16181d;
-    --fg: #f3f4f6;
-    --muted: #9ca3af;
-    --accent: #818cf8;
-    --accent-fg: #16181d;
-    --track: #2b2f37;
-    --ok: #4ade80;
-    --err: #f87171;
-    --card: #1e2127;
+    --bg: #171a19;
+    --surface: rgba(30, 34, 32, 0.9);
+    --card: #272b29;
+    --fg: #f3f6f4;
+    --muted: #a4ada9;
+    --faint: #737d78;
+    --line: rgba(239, 247, 243, 0.09);
+    --accent: #58d6b4;
+    --accent-dark: #7ce3c7;
+    --accent-soft: rgba(50, 180, 145, 0.16);
+    --accent-fg: #10251f;
+    --ok: #67dbba;
+    --err: #ff918e;
   }
 }
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-}
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; }
+body { margin: 0; background: var(--bg); }
+button, textarea { font: inherit; }
 
 .onboarding {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  padding: 40px 44px 28px;
-  background: var(--bg);
-  color: var(--fg);
-  font: 15px/1.5 system-ui, sans-serif;
-}
-
-.screen {
-  flex: 1;
-}
-
-.screen h1 {
-  margin: 0 0 12px;
-  font-size: 26px;
-  font-weight: 650;
-}
-
-.screen p {
-  margin: 0 0 14px;
-  max-width: 44ch;
-}
-
-.privacy {
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-top: 20px;
-}
-
-button {
-  font: inherit;
-  cursor: pointer;
-  border: none;
-  border-radius: 10px;
-  padding: 10px 18px;
-}
-
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Visible to a screen reader, not to the eye (UX.md 8). */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100vh;
+  min-height: 0;
   overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Keyboard focus must stay visible on every control (UX.md 8). */
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* High-contrast: use the system focus color so the ring survives (UX.md 8). */
-@media (forced-colors: active) {
-  :focus-visible {
-    outline-color: Highlight;
-  }
-}
-
-.primary {
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 600;
-}
-
-.secondary {
-  background: var(--card);
+  background:
+    radial-gradient(circle at 95% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 35%),
+    var(--bg);
   color: var(--fg);
-  font-weight: 600;
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-.link {
-  background: none;
-  color: var(--accent);
-  padding: 10px 6px;
-}
-
-.ok {
-  color: var(--ok);
-  font-weight: 600;
+.onboarding__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 11px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  backdrop-filter: blur(22px);
 }
 
-.err {
-  color: var(--err);
-}
+.onboarding__brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; color: #fff; background: linear-gradient(145deg, #29b997, #126f5c); box-shadow: 0 7px 18px color-mix(in srgb, var(--accent) 24%, transparent); font-weight: 800; }
+.onboarding__brand > span:last-child { display: flex; flex-direction: column; line-height: 1.2; }
+.onboarding__brand strong { font-size: 15px; }
+.onboarding__brand small { margin-top: 3px; color: var(--muted); font-size: 11px; }
 
-.tick {
-  font-size: 18px;
-}
+.onboarding__body { display: grid; grid-template-columns: 190px minmax(0, 1fr); min-height: 0; }
+.onboarding__body > aside { padding: 30px 18px; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 65%, transparent); }
 
-.bar {
-  height: 10px;
-  border-radius: 6px;
-  background: var(--track);
-  overflow: hidden;
-  max-width: 44ch;
-}
+.step-rail { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.step-rail li { position: relative; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 7px 8px; border-radius: 11px; color: var(--faint); }
+.step-rail li::after { content: ""; position: absolute; left: 21px; top: 43px; width: 1px; height: 17px; background: var(--line); }
+.step-rail li:last-child::after { display: none; }
+.step-rail li.active { color: var(--fg); background: var(--card); box-shadow: 0 4px 18px rgba(20, 35, 29, 0.06); }
+.step-rail li.done { color: var(--muted); }
+.step-rail__number { display: grid; flex: none; place-items: center; width: 27px; height: 27px; border: 1px solid var(--line); border-radius: 50%; background: var(--bg); font-size: 11px; font-weight: 700; }
+.step-rail li.active .step-rail__number, .step-rail li.done .step-rail__number { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
+.step-rail li > span:last-child { display: flex; min-width: 0; flex-direction: column; line-height: 1.2; }
+.step-rail strong { font-size: 12px; }
+.step-rail small { margin-top: 3px; font-size: 10px; }
 
-.bar-fill {
-  height: 100%;
-  width: 100%;
-  transform-origin: left;
-  background: var(--accent);
-  transition: transform 120ms linear;
-}
+.onboarding__content { display: flex; overflow: auto; padding: 38px 44px 28px; }
+.screen { width: 100%; max-width: 480px; margin: auto; animation: screen-in 220ms ease-out; }
+.screen__eyebrow { margin-bottom: 9px; color: var(--accent); font-size: 11px; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; }
+.screen h1 { margin: 0 0 12px; font-size: clamp(25px, 4vw, 32px); line-height: 1.15; letter-spacing: -0.035em; }
+.screen > p { max-width: 45ch; margin: 0 0 18px; color: var(--muted); }
 
-.tryfield {
-  width: 100%;
-  max-width: 44ch;
-  min-height: 96px;
-  resize: vertical;
-  border-radius: 10px;
-  border: 1px solid var(--track);
-  background: var(--card);
-  color: var(--fg);
-  padding: 12px;
-  font: inherit;
-}
+.screen--welcome { text-align: center; }
+.screen--welcome > p { margin-inline: auto; }
+.welcome-orb { display: grid; place-items: center; width: 94px; height: 94px; margin: 0 auto 24px; border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent); border-radius: 30px; background: radial-gradient(circle at 35% 30%, #54d6b4, #13755f 70%); color: #fff; box-shadow: 0 22px 55px color-mix(in srgb, var(--accent) 25%, transparent); transform: rotate(-4deg); }
+.welcome-orb span { font-size: 38px; font-weight: 800; transform: rotate(4deg); }
 
-.example {
-  background: var(--card);
-  border-radius: 12px;
-  padding: 14px 18px;
-  max-width: 44ch;
-}
-
-.example p {
-  margin: 2px 0;
-}
-
-.dots {
-  display: flex;
-  justify-content: center;
-  gap: 9px;
-  margin: 20px 0;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--track);
-}
-
-.dot.active {
-  background: var(--accent);
-  transform: scale(1.25);
-}
-
-.dot.done {
-  background: var(--accent);
-  opacity: 0.5;
-}
-
-.nav {
+.privacy-card, .permission-card, .model-choice, .example {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
+  gap: 13px;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 8px 28px rgba(20, 35, 29, 0.06);
+}
+.privacy-card { max-width: 360px; margin: 25px auto 0; text-align: left; }
+.privacy-card > span:first-child { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 20px; }
+.privacy-card > span:last-child, .permission-card > span:nth-child(2), .model-choice > span:nth-child(2) { display: flex; min-width: 0; flex-direction: column; }
+.privacy-card small, .permission-card small, .model-choice small { margin-top: 3px; color: var(--muted); font-size: 11px; }
+
+.permission-card { margin: 24px 0 10px; }
+.permission-card__icon, .model-choice__icon { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font-size: 18px; font-weight: 800; }
+.permission-card__status, .model-choice__badge { margin-left: auto; padding: 5px 8px; border-radius: 99px; background: color-mix(in srgb, var(--err) 10%, transparent); color: var(--err); font-size: 10px; font-weight: 700; }
+.permission-card__status.ready, .model-choice__badge { background: var(--accent-soft); color: var(--accent); }
+
+.model-choice { margin: 22px 0; }
+.model-choice__badge { white-space: nowrap; }
+
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 11px; margin-top: 20px; }
+button { padding: 10px 17px; border: 0; border-radius: 9px; cursor: pointer; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.primary { background: var(--accent); color: var(--accent-fg); font-weight: 700; box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 23%, transparent); }
+.primary:hover { background: var(--accent-dark); }
+.secondary { border: 1px solid var(--line); background: var(--card); color: var(--fg); font-weight: 650; }
+.link { padding-inline: 6px; background: none; color: var(--accent); }
+.ok { display: flex; align-items: center; gap: 7px; color: var(--ok) !important; font-weight: 650; }
+.err { color: var(--err); }
+.muted { color: var(--muted); font-size: 12px; }
+
+.bar { height: 8px; overflow: hidden; border-radius: 99px; background: var(--line); }
+.bar-fill { width: 100%; height: 100%; transform-origin: left; background: var(--accent); transition: transform 120ms linear; }
+.tryfield { width: 100%; min-height: 120px; resize: vertical; padding: 14px; border: 1px solid var(--line); border-radius: 14px; outline: 0; background: var(--card); color: var(--fg); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03); }
+.tryfield:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.example { display: grid; grid-template-columns: 70px 1fr; align-items: start; }
+.example p { margin: 0; }
+.example .muted { color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+
+.nav { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-height: 66px; padding: 11px 24px; border-top: 1px solid var(--line); background: var(--surface); backdrop-filter: blur(22px); }
+.nav__count { margin-right: auto; color: var(--muted); font-size: 11px; font-weight: 600; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@keyframes screen-in { from { opacity: 0; transform: translateY(7px); } }
+
+@media (max-width: 620px) {
+  .onboarding__body { grid-template-columns: 1fr; }
+  .onboarding__body > aside { padding: 12px 18px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .step-rail { flex-direction: row; justify-content: center; }
+  .step-rail li { min-height: 0; padding: 3px; background: transparent !important; box-shadow: none !important; }
+  .step-rail li::after, .step-rail li > span:last-child { display: none; }
+  .step-rail__number { width: 25px; height: 25px; }
+  .onboarding__content { padding: 26px 26px 20px; }
 }
 
-/* Forced colors flattens every author background, so the progress bar fill and
-   the step dots lose the accent that is their only visual signal. Redraw both
-   from the system palette: shape and fill, never hue alone.
-   This block must stay last in the file - it overrides `.dot.active`,
-   `.dot.done`, and `.bar-fill` at equal specificity, so source order decides. */
 @media (forced-colors: active) {
-  .bar {
-    border: 1px solid CanvasText;
-  }
+  .step-rail li.active, .permission-card, .model-choice, .privacy-card { border: 2px solid Highlight; }
+}
 
-  .bar-fill {
-    background: Highlight;
-    forced-color-adjust: none;
-  }
-
-  .dot {
-    border: 1px solid CanvasText;
-  }
-
-  .dot.active,
-  .dot.done {
-    background: CanvasText;
-    forced-color-adjust: none;
-  }
+@media (prefers-reduced-motion: reduce) {
+  .screen, .screen * { animation: none; transition: none; }
 }
